@@ -1,0 +1,1 @@
+VERSION="scapy-2025.8.26"
