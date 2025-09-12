@@ -45,12 +45,43 @@ from scapy.all import (
     bind_bottom_up,
 )
 
-from scapy.fields import Field, LESignedIntField
+from scapy.fields import (
+    Field,
+    FieldLenField,
+    FieldListField,
+    LEFieldLenField,
+    LELongField,
+    LESignedIntField,
+    LESignedLongField,
+    PacketLenField,
+    UTCTimeField,
+    XLE3BytesField,
+    XLELongField,
+)
 from scapy.layers.inet import TCP
 
 # these are too long to keep them in here for the formatter
 # there might be some other way to export or generate these?
 from scapy.contrib.opcua_binary_codes import _OPC_UA_Binary_Error_Codes
+
+# ============================================================================ #
+#
+#       Field Definitions
+#
+#       These are additional field definitions, to handle the complex structure
+#       of some messages related to the service calls
+#
+# ============================================================================ #
+
+
+# we might add these in the future
+
+
+# ============================================================================ #
+#
+#       Headers and Extension Packets
+#
+# ============================================================================ #
 
 
 # https://reference.opcfoundation.org/Core/Part6/v105/docs/?r=_Ref164020643
@@ -68,10 +99,15 @@ class OPC_UA_Binary_StatusCode(Packet):
     ]
 
 
-# ---------------------------------------------------------------------------- #
+class AdditionalHeader(Packet):
+    name = "Some appendix for the Request Header"
+    fields_desc = [
+        LEShortField("AdditionalHeader_NodeID", 0x00),  # 2-byte version
+        ByteField("EncodingMask", 0x00),
+    ]
 
 
-class OPC_UA_Binary_Message_EncodedNodeId(Packet):
+class OPC_UA_Binary_Message_EncodedNodeId_2B(Packet):
     # this is a encoded nodeid for most systems:
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.9
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
@@ -79,33 +115,233 @@ class OPC_UA_Binary_Message_EncodedNodeId(Packet):
     # the different possible encodings for special types are found here:
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/?r=_Ref105731689
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/?r=_Ref131423295
-    name = "Node Id: DataEncoding"
+    name = "Node Id: DataEncoding 2Byte format"
     fields_desc = [
-        # this first byte selects how the bytes are represented
-        # https://reference.opcfoundation.org/Core/Part6/v105/docs/?r=_Ref105731689
-        ByteField("NodeId_EncodingMask", b"01"),
-        ByteField("NodeId_Namespace_Index", b"00"),
-        # numeric id for the 4-byte representation
-        LEShortField("NodeId_Identifier_Numeric", 0),
+        ByteField("NodeId_Identifier_Numeric_2B", 0x00),
     ]
 
 
+class OPC_UA_Binary_Message_EncodedNodeId_4B(Packet):
+    # this is a encoded nodeid for most systems:
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.9
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
+    # ExpandedNodeId: A NodeId that allows the namespace URI to be specified instead of an index.
+    # the different possible encodings for special types are found here:
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/?r=_Ref105731689
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/?r=_Ref131423295
+    name = "Node Id: DataEncoding 4Byte format"
+    fields_desc = [
+        ByteField("NodeId_Namespace_Index", b"00"),
+        # numeric id for the 4-byte representation
+        LEShortField("NodeId_Identifier_Numeric_4B", 0x00),
+    ]
+
+
+class BuiltIn_OPCUA_Binary_QualifiedName(Packet):
+    # builtin encoding for qualified names
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.13
+    name = "Builtin: OPCUA Binary QualifiedName"
+    fields_desc = [
+        LEShortField("QualifiedName_NSIDX", 0x01),  # the namespace index
+        LESignedIntField("QualifiedName_Size", -1),
+        ConditionalField(
+            StrLenField(
+                "QualifiedName",
+                "",
+                length_from=lambda pkt: pkt.QualifiedName_Size,
+            ),
+            lambda pkt: pkt.QualifiedName_Size != -1,
+        ),
+    ]
+
+
+class CommonParameter_ReadValueId(Packet):
+    # a structure to select a specific Node for reading values
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.29#_Ref133162567
+    name = "Common Parameter: Struct ReadValueId"
+    fields_desc = [
+        XByteField("NodeID_EncodeMask", 0x01),  # default should be 4B encoding
+        ConditionalField(
+            ByteField("NodeId_Identifier_Numeric_2B", 0),
+            lambda pkt: pkt.NodeID_EncodeMask == 0x00,
+        ),
+        ConditionalField(
+            ByteField("NodeId_Namespace_Index", 0),
+            lambda pkt: pkt.NodeID_EncodeMask == 0x01,
+        ),
+        ConditionalField(
+            LEShortField("NodeId_Identifier_Numeric_4B", 0),
+            lambda pkt: pkt.NodeID_EncodeMask == 0x01,
+        ),
+        LEIntField("AttributeId", 0),
+        LESignedIntField("IndexRange_Size", -1),
+        ConditionalField(
+            StrLenField(
+                "IndexRange",
+                "",
+                length_from=lambda pkt: pkt.IndexRange_Size,
+            ),
+            lambda pkt: pkt.IndexRange_Size != -1,
+        ),
+        BuiltIn_OPCUA_Binary_QualifiedName,
+    ]
+
+
+class RequestHeader(Packet):
+    name = "Generic Service Request Header"
+    fields_desc = [
+        XByteField("NodeID_EncodeMask", 0x01),  # default should be 4B encoding
+        ConditionalField(
+            ByteField("NodeId_Identifier_Numeric_2B", 0),
+            lambda pkt: pkt.NodeID_EncodeMask == 0x00,
+        ),
+        ConditionalField(
+            ByteField("NodeId_Namespace_Index", 0),
+            lambda pkt: pkt.NodeID_EncodeMask == 0x01,
+        ),
+        ConditionalField(
+            LEShortField("NodeId_Identifier_Numeric_4B", 0),
+            lambda pkt: pkt.NodeID_EncodeMask == 0x01,
+        ),
+        XLELongField("Timestamp", 0),  # this is some sort of UTC stamp?
+        LEIntField("RequestHandle", 0),
+        LEIntField("ReturnDiagnostics", 0),  # this should be a flags field?
+        LESignedIntField("AuditEntryIdSize", -1),
+        ConditionalField(
+            StrLenField(
+                "AuditEntryId",
+                "",
+                length_from=lambda pkt: pkt.AuditEntryIdSize,
+            ),
+            lambda pkt: pkt.AuditEntryIdSize != -1,
+        ),
+        LEIntField("TimeoutHint", 0),
+        AdditionalHeader,
+    ]
+
+
+# ============================================================================ #
+# OPC UA Binary Message Headers:
+#   this contains the top layers for the encoded message objects
+#   body structure:
+#
+#   OPC_UA_Binary
+#       OPC_UA_Binary_OpenSecureChannel
+#       OPC_UA_Binary_SecureConversationMessage
+#           OPC_UA_Binary_EncodableMessageObject
+#               OPC_UA_Binary_Message_EncodedNodeId
+#                   OPC_UA_Binary_Message_OpenSecureChannelRequest
+#
+# ============================================================================ #
+
+
 class OPC_UA_Binary_Message_OpenSecureChannelRequest(Packet):
-    name = "Open SecureChannel Request"
+    name = "OpenSecureChannelRequest Service Message"
     # 7.1.2.3 Hello Message
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
     fields_desc = [
-        StrFixedLenField("tbd", "MSG", length=4),
+        RequestHeader,
+        LEIntField("ClientProtocolVersion", 0x00),
+        LEIntField("SecurityTokenRequestType", 0x00),
+        LEIntField("MessageSecurityMode", 0x00),
+        LESignedIntField("ClientNonceSize", -1),
+        ConditionalField(
+            StrLenField(
+                "ClientNonce",
+                "",
+                length_from=lambda pkt: pkt.ClientNonceSize,
+            ),
+            lambda pkt: pkt.ClientNonceSize != -1,
+        ),
+        LEIntField("RequestedLifetime", 0x00),
+    ]
+
+
+class OPC_UA_Binary_Message_CreateSessionRequest(Packet):
+    name = "CreateSessionRequest Service Message"
+    # 7.1.2.3 Hello Message
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
+    fields_desc = [
+        RequestHeader,
+    ]
+
+
+class OPC_UA_Binary_Message_ActivateSessionRequest(Packet):
+    name = "ActivateSessionRequest Service Message"
+    # 7.1.2.3 Hello Message
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
+    fields_desc = [
+        RequestHeader,
+    ]
+
+
+class OPC_UA_Binary_Message_ReadRequest(Packet):
+    name = "ReadRequest Service Message"
+    # 7.1.2.3 Hello Message
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
+    fields_desc = [
+        RequestHeader,
+        LESignedLongField("maxAge", -1),
+        LEIntEnumField(
+            "TimestampsToReturn",
+            3,
+            {0: "SOURCE", 1: "SERVER", 2: "BOTH", 3: "NEITHER", 4: "INVALID"},
+        ),
+        # the len field should be fine, appending a list of fields causes the issues atm...
+        FieldLenField("NodesToRead_ArraySize", None, fmt="<I", count_of="NodesToRead"),
+        # LESignedIntField("NodesToRead_ArraySize", 0),
+        # the lookup fails, since we used a packet and not a field
+        # we will need to build a field or find out how the packets are handled
+        FieldListField(
+            "NodesToRead",
+            None,
+            CommonParameter_ReadValueId(),
+            count_from=lambda pkt: pkt.NodesToRead_ArraySize,
+        ),
+    ]
+
+
+class OPC_UA_Binary_Message_CloseSessionRequest(Packet):
+    """
+    https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.4 \n
+
+    This Service is used to terminate a Session. \n
+
+    Service Results: \n
+    Bad_SessionIdInvalid
+
+    """
+
+    name = "CloseSessionRequest Service Message"
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.4
+    fields_desc = [
+        RequestHeader,
+        ByteField("DeleteSubscriptions", 0),
+    ]
+
+
+class OPC_UA_Binary_Message_CloseSecureChannelRequest(Packet):
+    name = "CloseSecureChannelRequest Service Message"
+    #
+    fields_desc = [
+        RequestHeader,
     ]
 
 
 class OPC_UA_Binary_EncodableMessageObject(Packet):
+    """
+    This is the initial part of a message object following an OPN or MSG packet.
+    Depending on the encoding, we need to choose a specific encoder for the NodeIDs
+    and then decode the service Node that has been requested.
+    """
+
     name = "Encodable Message Object"
     # 7.1.2.3 Hello Message
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
     fields_desc = [
-        OPC_UA_Binary_Message_EncodedNodeId,
-        OPC_UA_Binary_Message_OpenSecureChannelRequest,
+        # this first byte selects how the bytes are represented
+        # https://reference.opcfoundation.org/Core/Part6/v105/docs/?r=_Ref105731689
+        XByteField("NodeId_EncodingMask", 0x01),
     ]
 
 
@@ -115,10 +351,12 @@ class OPC_UA_Binary_EncodableMessageObject(Packet):
 #   body up to the encodable message objects:
 #   OPC_UA_Binary
 #       OPC_UA_Binary_Hello
-#       OPC_UA_Binary_Hello_ack
+#       OPC_UA_Binary_Acknowledge
 #       OPC_UA_Binary_OpenSecureChannel
 #       OPC_UA_Binary_SecureConversationMessage
 #       OPC_UA_Binary_Error
+#       OPC_UA_Binary_Close
+#       OPC_UA_Binary_ReverseHello
 #
 # ============================================================================ #
 #
@@ -133,6 +371,8 @@ class OPC_UA_Binary_EncodableMessageObject(Packet):
 #           ACK an Acknowledge Message.
 #           ERR an Error Message.
 #           RHE a ReverseHello Message. (we usually find ACK?)
+#           CLO ...
+#           MSG ...
 #           The SecureChannel layer defines additional values which the OPC UA
 #            Connection Protocol layer shall accept. (we dont know which ones, fml)
 #  2) chunk type: mandatory (> this is a reserved field, always F)
@@ -165,7 +405,7 @@ class OPC_UA_Binary_Hello(Packet):
         LEIntField("SendBufferSize", 8192),
         LEIntField("MaxMessageSize", 0),
         LEIntField("MaxChunkCount", 0),
-        LEIntField("EndpointUriSize", -1),  # 4-byte signed integer for length
+        LESignedIntField("EndpointUriSize", -1),
         ConditionalField(
             StrLenField(
                 "EndpointUri",
@@ -174,6 +414,64 @@ class OPC_UA_Binary_Hello(Packet):
             ),  # The actual string data, condition_callable),
             lambda pkt: pkt.EndpointUriSize != -1,  # if this is set,
         ),
+    ]
+
+
+# the default header structured for an reverse hello message:
+# +-----+----+----+------+-----+
+# | MT  | CT | MS | SURI | EPU |
+# +-----+----+----+------+-----+
+#   RHE   F    xx   str    str
+#  4) ServerUri:
+#  5) EndpointUri: (mandatory) e.g. opc.tcp://172.17.0.2:4840/
+#
+# If the understanding is correct, this type of packet is used to pass
+# firewalls and other statefull entities.
+
+
+class OPC_UA_Binary_ReverseHello(Packet):
+    name = "OPC UA Binary RHE"
+    # 7.1.2.3 Hello Message
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
+    fields_desc = [
+        LEIntField("ProtocolVersion", 0),
+        LEIntField("ReceiveBufferSize", 8192),
+        LEIntField("SendBufferSize", 8192),
+        LEIntField("MaxMessageSize", 0),
+        LEIntField("MaxChunkCount", 0),
+        LESignedIntField("EndpointUriSize", -1),
+        ConditionalField(
+            StrLenField(
+                "EndpointUri",
+                "",
+                length_from=lambda pkt: pkt.EndpointUriSize,
+            ),  # The actual string data, condition_callable),
+            lambda pkt: pkt.EndpointUriSize != -1,  # if this is set,
+        ),
+    ]
+
+
+# TODO
+# the default header structured for an ... message:
+# +-----+----+----+-----+-----+-----+-----+-----+
+# | MT  | CT | MS | VER | RBS | SBS | MMS | MCC |
+# +-----+----+----+-----+-----+-----+-----+-----+
+#   CLO   F    xx   0     65k   65k   xx    5k
+#  4) version: (> this is some default, there is only one version so far )
+#  5) ReceiveBufferSize
+#  6) SendBufferSize
+#  7) MaxMessageSize
+#  8) MaxChunkCount
+
+
+class OPC_UA_Binary_CloseSecureChannel(Packet):
+    name = "OPC UA Binary CLO"
+    # https://reference.opcfoundation.org/Core/Part6/v104/docs/6.7.2.2
+    fields_desc = [
+        LEIntField("SecureChannelId", 0),
+        LEIntField("SecurityTokenId", 0),
+        LEIntField("SequenceNumber", 0),
+        LEIntField("RequestId", 0),
     ]
 
 
@@ -189,7 +487,7 @@ class OPC_UA_Binary_Hello(Packet):
 #  8) MaxChunkCount
 
 
-class OPC_UA_Binary_Ack(Packet):
+class OPC_UA_Binary_Acknowledge(Packet):
     """
     Class for handling OPC UA HEL ACK messages: \n
     4) version: (> this is some default, there is only one version so far ) \n
@@ -316,6 +614,13 @@ class OPC_UA_Binary_SecureConversationMessage(Packet):
 #   ERR   F    xx   INT   str
 #  4) ERROR: This is the official ID to map the issue
 #  5) Reason: A textual but optional description of the error
+#
+# Message Header: A three byte ASCII code that identifies the Message type.
+# The following values are defined at this time:
+# MSG A Message secured with the keys associated with a channel.
+# OPN OpenSecureChannel Message.
+# CLO CloseSecureChannel Message.
+#  other than these we also should have: HEL, ERR, ?
 
 
 class OPC_UA_Binary_Error(Packet):
@@ -369,6 +674,11 @@ class OPC_UA_Binary(Packet):
     ]
 
 
+# IMPORRTANT: we are still missing the chunking mechanism:
+# https://reference.opcfoundation.org/Core/Part6/v104/docs/6.7.2#_Ref164007251
+# This cannot be built with the current settings
+
+
 # bind the main OPC Binary Layer:
 bind_bottom_up(TCP, OPC_UA_Binary, dport=4840)
 bind_bottom_up(TCP, OPC_UA_Binary, sport=4840)
@@ -376,10 +686,12 @@ bind_layers(TCP, OPC_UA_Binary, sport=4840, dport=4840)
 
 # Bind the top message Layers (HEL,ACK,OPN,MSG,ERR):
 bind_layers(OPC_UA_Binary, OPC_UA_Binary_Hello, MessageType=b"HEL")
-bind_layers(OPC_UA_Binary, OPC_UA_Binary_Ack, MessageType=b"ACK")
+bind_layers(OPC_UA_Binary, OPC_UA_Binary_Acknowledge, MessageType=b"ACK")
 bind_layers(OPC_UA_Binary, OPC_UA_Binary_OpenSecureChannel, MessageType=b"OPN")
 bind_layers(OPC_UA_Binary, OPC_UA_Binary_SecureConversationMessage, MessageType=b"MSG")
 bind_layers(OPC_UA_Binary, OPC_UA_Binary_Error, MessageType=b"ERR")
+bind_layers(OPC_UA_Binary, OPC_UA_Binary_CloseSecureChannel, MessageType=b"CLO")
+bind_layers(OPC_UA_Binary, OPC_UA_Binary_ReverseHello, MessageType=b"RHE")
 
 
 # Bind the OpenSecureChannel Services together:
@@ -393,6 +705,56 @@ bind_layers(
     OPC_UA_Binary_SecureConversationMessage,
     OPC_UA_Binary_EncodableMessageObject,
 )
+
+bind_layers(
+    OPC_UA_Binary_CloseSecureChannel,
+    OPC_UA_Binary_EncodableMessageObject,
+)
+
+
+bind_layers(
+    OPC_UA_Binary_EncodableMessageObject,
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    NodeId_EncodingMask=0x01,
+)
+
+# Bind the service layers
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_OpenSecureChannelRequest,
+    NodeId_Identifier_Numeric_4B=446,
+)
+
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_CreateSessionRequest,
+    NodeId_Identifier_Numeric_4B=461,
+)
+
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_ActivateSessionRequest,
+    NodeId_Identifier_Numeric_4B=467,
+)
+
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_ReadRequest,
+    NodeId_Identifier_Numeric_4B=631,
+)
+
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_CloseSessionRequest,
+    NodeId_Identifier_Numeric_4B=473,
+)
+
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_CloseSecureChannelRequest,
+    NodeId_Identifier_Numeric_4B=452,
+)
+
 
 # ---------------------------------------------------------------------------- #
 
