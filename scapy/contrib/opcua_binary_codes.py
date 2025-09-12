@@ -9,10 +9,12 @@
 # receives the CloseSecureChannel Message.
 
 # one important thing about errors on OPC: the different statuscodes are provided
-# with each service. As far as im aware, the standard itself does not have a single
-# document will all available codes in one place. There is a block of codes for
-# each service and transport setting. The codes below are a collection of the
-# python implementation of OPC UA
+# with each service. There is one list of common status codes:
+# https://reference.opcfoundation.org/Core/Part4/v105/docs/7.39.2#_Ref90539276
+# as far as i a aware, this document does not list all codes for each service
+# and transport setting. The codes below are a collection of the
+# python implementation of OPC UA and should be generated during packaging
+# This is a copy of the generated codes for testing, until there is a better option
 _OPC_UA_Binary_Error_Codes = {
     0: ("Good", "The operation completed successfully."),
     0x40000000: (
