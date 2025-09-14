@@ -40,6 +40,7 @@ from scapy.fields import (
     FieldListField,
     LESignedIntField,
     LESignedLongField,
+    XLEIntField,
     XLELongField,
 )
 from scapy.layers.inet import TCP
@@ -58,7 +59,52 @@ from scapy.contrib.opcua_binary_codes import _OPC_UA_Binary_Error_Codes
 # ============================================================================ #
 
 
-# we might add these in the future
+class Generic_NodeId(Packet):
+    name = "A generic node to showcase the encoding scheme"
+    fields_desc = [
+        XByteField("Request_Header_NodeID_Mask", 1),  # default should be 4B encoding
+        ConditionalField(
+            ByteField("Request_Header_Identifier_Numeric_2B", 0),
+            lambda pkt: pkt.Request_Header_NodeID_Mask == 0,
+        ),
+        ConditionalField(
+            ByteField("Request_Header_Namespace_Index_4B", 0),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 1),
+        ),
+        ConditionalField(
+            LEShortField("Request_Header_NodeIdentifier_Numeric_4B", 0),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 1),
+        ),
+        ConditionalField(
+            LEShortField("Request_Header_NamespaceIndex_Default", 0),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 2)
+            or (pkt.Request_Header_NodeID_Mask == 3)
+            or (pkt.Request_Header_NodeID_Mask == 4)
+            or (pkt.Request_Header_NodeID_Mask == 5),
+        ),
+        ConditionalField(
+            LEIntField("Request_Header_NamespaceIndex_Numeric", 0),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 2),
+        ),
+        ConditionalField(
+            StrFixedLenField("Request_Header_NamespaceIndex_GUID", 0, length=16),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 4),
+        ),
+        ConditionalField(
+            LEIntField("Request_Header_NodeIdentifier_String_Size", 0),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 3)
+            or (pkt.Request_Header_NodeID_Mask == 5),
+        ),
+        ConditionalField(
+            StrLenField(
+                "Request_Header_NodeIdentifier_String",
+                "",
+                length_from=lambda pkt: pkt.Request_Header_NodeIdentifier_String_Size,
+            ),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 3)
+            or (pkt.Request_Header_NodeID_Mask == 5),
+        ),
+    ]
 
 
 # ============================================================================ #
@@ -291,11 +337,14 @@ class CommonParameter_ApplicationDescription(Packet):
             fmt="<I",
             count_of="DiscoveryUrls_Array",
         ),
-        PacketListField(
-            "DiscoveryUrls_Array",
-            None,
-            CustomParameter_StringUrls,
-            count_from=lambda pkt: pkt.DiscoveryUrls_ArraySize,
+        ConditionalField(
+            PacketListField(
+                "DiscoveryUrls_Array",
+                None,
+                CustomParameter_StringUrls,
+                count_from=lambda pkt: pkt.DiscoveryUrls_ArraySize,
+            ),
+            lambda pkt: pkt.DiscoveryProfileUri_Size != -1,
         ),
     ]
 
@@ -524,7 +573,7 @@ class CommonParameter_RequestHeader(Packet):
         ),
         XLELongField("Timestamp", 0),  # this is some sort of UTC stamp?
         LEIntField("RequestHandle", 0),
-        LEIntField("ReturnDiagnostics", 0),  # this should be a flags field?
+        XLEIntField("ReturnDiagnostics", 0),  # this should be a flags field?
         LESignedIntField("AuditEntryIdSize", -1),
         ConditionalField(
             StrLenField(
@@ -643,7 +692,7 @@ class OPC_UA_Binary_Message_ActivateSessionRequest(Packet):
         FieldLenField(
             "ClientSoftwareCertificates_ArraySize",
             None,
-            fmt="<I",
+            fmt="<i",
             count_of="ClientSoftwareCertificates",
         ),
         PacketListField(
@@ -655,7 +704,7 @@ class OPC_UA_Binary_Message_ActivateSessionRequest(Packet):
         FieldLenField(
             "LocaleIds_ArraySize",
             None,
-            fmt="<I",
+            fmt="<i",
             count_of="LocaleIds_Array",
         ),
         PacketListField(
