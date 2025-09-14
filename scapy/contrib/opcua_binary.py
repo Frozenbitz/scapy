@@ -25,6 +25,7 @@ from scapy.all import (
 
 from scapy.fields import (
     ByteField,
+    MultipleTypeField,
     XByteField,
     LEShortField,
     IntField,
@@ -500,16 +501,26 @@ class CommonParameter_RequestHeader(Packet):
             or (pkt.Request_Header_NodeID_Mask == 5),
         ),
         ConditionalField(
-            LEIntField("Request_Header_NodeIdentifier_OPString_Size", 0),
-            lambda pkt: pkt.Request_Header_NodeID_Mask == 5,
+            LEIntField("Request_Header_NamespaceIndex_Numeric", 0),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 2),
+        ),
+        ConditionalField(
+            StrFixedLenField("Request_Header_NamespaceIndex_GUID", 0, length=16),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 4),
+        ),
+        ConditionalField(
+            LEIntField("Request_Header_NodeIdentifier_String_Size", 0),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 3)
+            or (pkt.Request_Header_NodeID_Mask == 5),
         ),
         ConditionalField(
             StrLenField(
-                "Request_Header_NodeIdentifier_OPString",
+                "Request_Header_NodeIdentifier_String",
                 "",
-                length_from=lambda pkt: pkt.Request_Header_NodeIdentifier_OPString_Size,
+                length_from=lambda pkt: pkt.Request_Header_NodeIdentifier_String_Size,
             ),
-            lambda pkt: pkt.Request_Header_NodeID_Mask == 5,
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 3)
+            or (pkt.Request_Header_NodeID_Mask == 5),
         ),
         XLELongField("Timestamp", 0),  # this is some sort of UTC stamp?
         LEIntField("RequestHandle", 0),
