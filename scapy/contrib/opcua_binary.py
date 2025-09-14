@@ -479,18 +479,37 @@ class CustomParameter_LocaleId(Packet):
 class CommonParameter_RequestHeader(Packet):
     name = "Generic Service Request Header"
     fields_desc = [
-        XByteField("Request_Header_NodeID_Mask", 0x01),  # default should be 4B encoding
+        XByteField("Request_Header_NodeID_Mask", 1),  # default should be 4B encoding
         ConditionalField(
             ByteField("Request_Header_Identifier_Numeric_2B", 0),
-            lambda pkt: pkt.Request_Header_NodeID_Mask == 0x00,
+            lambda pkt: pkt.Request_Header_NodeID_Mask == 0,
         ),
         ConditionalField(
-            ByteField("Request_Header_Namespace_Index", 0),
-            lambda pkt: pkt.Request_Header_NodeID_Mask == 0x01,
+            ByteField("Request_Header_Namespace_Index_4B", 0),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 1),
         ),
         ConditionalField(
-            LEShortField("Request_Header_Identifier_Numeric_4B", 0),
-            lambda pkt: pkt.Request_Header_NodeID_Mask == 0x01,
+            LEShortField("Request_Header_NodeIdentifier_Numeric_4B", 0),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 1),
+        ),
+        ConditionalField(
+            LEShortField("Request_Header_NamespaceIndex_Default", 0),
+            lambda pkt: (pkt.Request_Header_NodeID_Mask == 2)
+            or (pkt.Request_Header_NodeID_Mask == 3)
+            or (pkt.Request_Header_NodeID_Mask == 4)
+            or (pkt.Request_Header_NodeID_Mask == 5),
+        ),
+        ConditionalField(
+            LEIntField("Request_Header_NodeIdentifier_OPString_Size", 0),
+            lambda pkt: pkt.Request_Header_NodeID_Mask == 5,
+        ),
+        ConditionalField(
+            StrLenField(
+                "Request_Header_NodeIdentifier_OPString",
+                "",
+                length_from=lambda pkt: pkt.Request_Header_NodeIdentifier_OPString_Size,
+            ),
+            lambda pkt: pkt.Request_Header_NodeID_Mask == 5,
         ),
         XLELongField("Timestamp", 0),  # this is some sort of UTC stamp?
         LEIntField("RequestHandle", 0),
