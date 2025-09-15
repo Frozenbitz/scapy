@@ -415,7 +415,7 @@ class CommonParameter_ApplicationDescription(Packet):
         FieldLenField(
             "DiscoveryUrls_ArraySize",
             None,
-            fmt="<I",
+            fmt="<i",
             count_of="DiscoveryUrls_Array",
         ),
         ConditionalField(
@@ -1222,54 +1222,54 @@ class OPC_UA_Binary_Message_CreateSessionRequest(Packet):
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
     fields_desc = [
         CommonParameter_RequestHeader,
-        # CommonParameter_ApplicationDescription,  # clientDescription
-        # LESignedIntField("ServerUri_Size", -1),
-        # ConditionalField(
-        #     StrLenField(
-        #         "ServerUri",
-        #         "",
-        #         length_from=lambda pkt: pkt.ServerUri_Size,
-        #     ),
-        #     lambda pkt: pkt.ServerUri_Size != -1,
-        # ),
-        # LESignedIntField("EndpointUrl_Size", -1),
-        # ConditionalField(
-        #     StrLenField(
-        #         "EndpointUrl",
-        #         "",
-        #         length_from=lambda pkt: pkt.EndpointUrl_Size,
-        #     ),
-        #     lambda pkt: pkt.EndpointUrl_Size != -1,
-        # ),
-        # LESignedIntField("SessionName_Size", -1),
-        # ConditionalField(
-        #     StrLenField(
-        #         "SessionName",
-        #         "",
-        #         length_from=lambda pkt: pkt.SessionName_Size,
-        #     ),
-        #     lambda pkt: pkt.SessionName_Size != -1,
-        # ),
-        # LESignedIntField("ClientNonce_Size", -1),
-        # ConditionalField(
-        #     StrLenField(
-        #         "ClientNonce",
-        #         "",
-        #         length_from=lambda pkt: pkt.ClientNonce_Size,
-        #     ),
-        #     lambda pkt: pkt.ClientNonce_Size != -1,
-        # ),
-        # LESignedIntField("ClientCertificate_Size", -1),
-        # ConditionalField(
-        #     StrLenField(
-        #         "ClientCertificate",
-        #         "",
-        #         length_from=lambda pkt: pkt.ClientCertificate_Size,
-        #     ),
-        #     lambda pkt: pkt.ClientCertificate_Size != -1,
-        # ),
-        # LESignedLongField("RequestedSessionTimeout", 0),  # some weird timestamp
-        # LESignedIntField("MaxResponseMessageSize", 0),
+        CommonParameter_ApplicationDescription,  # clientDescription
+        LESignedIntField("ServerUri_Size", -1),
+        ConditionalField(
+            StrLenField(
+                "ServerUri",
+                "",
+                length_from=lambda pkt: pkt.ServerUri_Size,
+            ),
+            lambda pkt: pkt.ServerUri_Size != -1,
+        ),
+        LESignedIntField("EndpointUrl_Size", -1),
+        ConditionalField(
+            StrLenField(
+                "EndpointUrl",
+                "",
+                length_from=lambda pkt: pkt.EndpointUrl_Size,
+            ),
+            lambda pkt: pkt.EndpointUrl_Size != -1,
+        ),
+        LESignedIntField("SessionName_Size", -1),
+        ConditionalField(
+            StrLenField(
+                "SessionName",
+                "",
+                length_from=lambda pkt: pkt.SessionName_Size,
+            ),
+            lambda pkt: pkt.SessionName_Size != -1,
+        ),
+        LESignedIntField("ClientNonce_Size", -1),
+        ConditionalField(
+            StrLenField(
+                "ClientNonce",
+                "",
+                length_from=lambda pkt: pkt.ClientNonce_Size,
+            ),
+            lambda pkt: pkt.ClientNonce_Size != -1,
+        ),
+        LESignedIntField("ClientCertificate_Size", -1),
+        ConditionalField(
+            StrLenField(
+                "ClientCertificate",
+                "",
+                length_from=lambda pkt: pkt.ClientCertificate_Size,
+            ),
+            lambda pkt: pkt.ClientCertificate_Size != -1,
+        ),
+        LESignedLongField("RequestedSessionTimeout", 0),  # some weird timestamp
+        LESignedIntField("MaxResponseMessageSize", 0),
     ]
 
 
