@@ -17,13 +17,17 @@ Message SecurityProtocols: https://reference.opcfoundation.org/Core/Part6/v105/d
 TransportProtocols: https://reference.opcfoundation.org/Core/Part6/v105/docs/7
 """
 
+from scapy.all import *
+
 from scapy.all import (
     Packet,
     bind_layers,
     bind_bottom_up,
 )
 
+from scapy.contrib.ethercat import LEBitField
 from scapy.fields import (
+    BitFieldLenField,
     ByteField,
     FlagsField,
     MultipleTypeField,
@@ -63,47 +67,47 @@ from scapy.contrib.opcua_binary_codes import _OPC_UA_Binary_Error_Codes
 class Generic_NodeId(Packet):
     name = "A generic node to showcase the encoding scheme"
     fields_desc = [
-        XByteField("Request_Header_NodeID_Mask", 1),  # default should be 4B encoding
+        XByteField("GenericNode_NodeID_Mask", 1),  # default should be 4B encoding
         ConditionalField(
-            ByteField("Request_Header_Identifier_Numeric_2B", 0),
-            lambda pkt: pkt.Request_Header_NodeID_Mask == 0,
+            ByteField("GenericNode_Identifier_Numeric_2B", 0),
+            lambda pkt: pkt.GenericNode_NodeID_Mask == 0,
         ),
         ConditionalField(
-            ByteField("Request_Header_Namespace_Index_4B", 0),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 1),
+            ByteField("GenericNode_Namespace_Index_4B", 0),
+            lambda pkt: (pkt.GenericNode_NodeID_Mask == 1),
         ),
         ConditionalField(
-            LEShortField("Request_Header_NodeIdentifier_Numeric_4B", 0),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 1),
+            LEShortField("GenericNode_NodeIdentifier_Numeric_4B", 0),
+            lambda pkt: (pkt.GenericNode_NodeID_Mask == 1),
         ),
         ConditionalField(
-            LEShortField("Request_Header_NamespaceIndex_Default", 0),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 2)
-            or (pkt.Request_Header_NodeID_Mask == 3)
-            or (pkt.Request_Header_NodeID_Mask == 4)
-            or (pkt.Request_Header_NodeID_Mask == 5),
+            LEShortField("GenericNode_NamespaceIndex_Default", 0),
+            lambda pkt: (pkt.GenericNode_NodeID_Mask == 2)
+            or (pkt.GenericNode_NodeID_Mask == 3)
+            or (pkt.GenericNode_NodeID_Mask == 4)
+            or (pkt.GenericNode_NodeID_Mask == 5),
         ),
         ConditionalField(
-            LEIntField("Request_Header_NamespaceIndex_Numeric", 0),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 2),
+            LEIntField("GenericNode_NamespaceIndex_Numeric", 0),
+            lambda pkt: (pkt.GenericNode_NodeID_Mask == 2),
         ),
         ConditionalField(
-            StrFixedLenField("Request_Header_NamespaceIndex_GUID", 0, length=16),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 4),
+            StrFixedLenField("GenericNode_NamespaceIndex_GUID", 0, length=16),
+            lambda pkt: (pkt.GenericNode_NodeID_Mask == 4),
         ),
         ConditionalField(
-            LEIntField("Request_Header_NodeIdentifier_String_Size", 0),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 3)
-            or (pkt.Request_Header_NodeID_Mask == 5),
+            LEIntField("GenericNode_NodeIdentifier_String_Size", 0),
+            lambda pkt: (pkt.GenericNode_NodeID_Mask == 3)
+            or (pkt.GenericNode_NodeID_Mask == 5),
         ),
         ConditionalField(
             StrLenField(
-                "Request_Header_NodeIdentifier_String",
+                "GenericNode_NodeIdentifier_String",
                 "",
-                length_from=lambda pkt: pkt.Request_Header_NodeIdentifier_String_Size,
+                length_from=lambda pkt: pkt.GenericNode_NodeIdentifier_String_Size,
             ),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 3)
-            or (pkt.Request_Header_NodeID_Mask == 5),
+            lambda pkt: (pkt.GenericNode_NodeID_Mask == 3)
+            or (pkt.GenericNode_NodeID_Mask == 5),
         ),
     ]
 
@@ -118,6 +122,41 @@ _diagnosticInfo_flags = {
     0x40: "InnerDiagnosticInfo",
     0x80: "unused",
 }
+
+
+class CustomParameter_StringUrls(Packet):
+    # a type for creating arrays of string urls
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.2#_Ref153821547
+    name = "Custom Parameter: String Urls"
+    fields_desc = [
+        LESignedIntField("StringUrl_Size", -1),
+        StrLenField(
+            "StringUrl",
+            None,
+            length_from=lambda pkt: pkt.StringUrl_Size,
+        ),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
+
+class CustomParameter_GenericString(Packet):
+    # a type for creating arrays of any string
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.4
+    name = "Custom Parameter: Generic String"
+    fields_desc = [
+        LESignedIntField("GenericString_Size", -1),
+        StrLenField(
+            "GenericString",
+            None,
+            length_from=lambda pkt: pkt.GenericString_Size,
+        ),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
 
 # ============================================================================ #
 #
@@ -201,6 +240,52 @@ class BuiltIn_OPCUA_Binary_QualifiedName(Packet):
     ]
 
 
+class BuiltIn_OPCUA_Binary_LocalizedText(Packet):
+
+    name = "Builtin: OPCUA Binary LocalizedText"
+    fields_desc = [
+        ByteEnumField(
+            "LocalizedText_EncodingMask",
+            "None",  # binary body
+            {0: "None", 1: "Locale", 2: "Normal Text", 3: "Locale and Text"},
+        ),
+        ConditionalField(
+            LESignedIntField("LocalizedText_Locale_Size", -1),
+            lambda pkt: (pkt.LocalizedText_EncodingMask == 1)
+            or (pkt.LocalizedText_EncodingMask == 3),
+        ),
+        ConditionalField(
+            StrLenField(
+                "LocalizedText_Locale",
+                "",
+                length_from=lambda pkt: pkt.LocalizedText_Locale_Size,
+            ),
+            lambda pkt: (
+                (pkt.LocalizedText_EncodingMask == 1)
+                or (pkt.LocalizedText_EncodingMask == 3)
+            )
+            and (pkt.LocalizedText_Locale_Size != -1),
+        ),
+        ConditionalField(
+            LESignedIntField("LocalizedText_Size", -1),
+            lambda pkt: (pkt.LocalizedText_EncodingMask == 2)
+            or (pkt.LocalizedText_EncodingMask == 3),
+        ),
+        ConditionalField(
+            StrLenField(
+                "LocalizedText",
+                "",
+                length_from=lambda pkt: pkt.LocalizedText_Size,
+            ),
+            lambda pkt: (
+                (pkt.LocalizedText_EncodingMask == 2)
+                or (pkt.LocalizedText_EncodingMask == 3)
+            )
+            and (pkt.LocalizedText_Size != -1),
+        ),
+    ]
+
+
 class BuiltIn_OPCUA_ExtensionObject(Packet):
     # builtin container object for structure and union data types
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.8
@@ -237,40 +322,6 @@ class BuiltIn_OPCUA_ExtensionObject(Packet):
             lambda pkt: pkt.Extension_Object_Body_Size != -1,
         ),
     ]
-
-
-class CustomParameter_StringUrls(Packet):
-    # a type for creating arrays of string urls
-    # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.2#_Ref153821547
-    name = "Custom Parameter: String Urls"
-    fields_desc = [
-        LESignedIntField("StringUrl_Size", -1),
-        StrLenField(
-            "StringUrl",
-            None,
-            length_from=lambda pkt: pkt.StringUrl_Size,
-        ),
-    ]
-
-    def extract_padding(self, s):
-        return "", s
-
-
-class CustomParameter_GenericString(Packet):
-    # a type for creating arrays of any string
-    # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.4
-    name = "Custom Parameter: Generic String"
-    fields_desc = [
-        LESignedIntField("GenericString_Size", -1),
-        StrLenField(
-            "GenericString",
-            None,
-            length_from=lambda pkt: pkt.GenericString_Size,
-        ),
-    ]
-
-    def extract_padding(self, s):
-        return "", s
 
 
 class CommonParameter_ApplicationDescription(Packet):
@@ -850,6 +901,149 @@ class CustomParameter_LocaleId(Packet):
         return "", s
 
 
+class BuiltIn_OPCUA_Binary_Variant(Packet):
+    # generic structure, that can hold basically all builtin types of sorts
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.16
+
+    # the encoding byte is a mixture of fields
+    # the first part contains a Type ID
+    # Bits 0-5 are a six bit ID
+    # The second part contains two flags
+    # Bit 6 : True if the ArrayDimensions field is encoded.
+    # Bit 7 : True if an array of values is encoded.
+    name = "Builtin: OPCUA Binary Variant"
+    fields_desc = [
+        # i am not sure if a custom bitfield would handle network oder perfectly at this point
+        ByteField(
+            "Variant_TypeId",
+            0,
+        ),  # we ignore the flags for now, as this would require some custom logic
+        # ...
+        ConditionalField(
+            ByteField("Variant_Value_B", -1),
+            lambda pkt: (pkt.Variant_TypeId == 1)  # Bool
+            or (pkt.Variant_TypeId == 2)  # SByte
+            or (pkt.Variant_TypeId == 3),  # Byte
+        ),
+        ConditionalField(
+            LEShortField("Variant_Value_2B", -1),
+            lambda pkt: (pkt.Variant_TypeId == 4)  # Int16
+            or (pkt.Variant_TypeId == 5),  # UInt16
+        ),
+        ConditionalField(
+            LESignedIntField("Variant_Value_4B", -1),
+            lambda pkt: (pkt.Variant_TypeId == 6)  # Int32
+            or (pkt.Variant_TypeId == 7)  # UInt32
+            or (pkt.Variant_TypeId == 10)  # Float32
+            or (pkt.Variant_TypeId == 19),  # StatusCode
+        ),
+        ConditionalField(
+            LESignedLongField("Variant_Value_8B", -1),
+            lambda pkt: (pkt.Variant_TypeId == 8)  # Int64
+            or (pkt.Variant_TypeId == 9)  # UInt64
+            or (pkt.Variant_TypeId == 11)  # Double64
+            or (pkt.Variant_TypeId == 13),  # DateTime
+        ),
+        ConditionalField(
+            StrFixedLenField("Variant_Value_GUID", "", length=16),
+            lambda pkt: (pkt.Variant_TypeId == 14),
+        ),
+        # ConditionalField(
+        #     CustomParameter_GenericString,
+        #     lambda pkt: (pkt.Variant_TypeId == 15),  # Bytestring
+        # ),
+        # we skip XML Element
+        # ConditionalField(
+        #     Generic_NodeId,
+        #     lambda pkt: (pkt.Variant_TypeId == 17),
+        # ),
+        # ConditionalField(
+        #     BuiltIn_OPCUA_Binary_QualifiedName,
+        #     lambda pkt: (pkt.Variant_TypeId == 20),
+        # ),
+        # TODO: this creates an exception for some default value
+        ConditionalField(
+            BuiltIn_OPCUA_Binary_LocalizedText,
+            lambda pkt: (pkt.Variant_TypeId == 21),
+        ),
+        # we skip extension object
+        # we cannot call this recursively
+        # ConditionalField(
+        #     CommonParameter_DataValue,
+        #     lambda pkt: (pkt.Variant_TypeId == 23),
+        # ),
+        # ConditionalField(
+        #     CommonParameter_DiagnosticInfo,
+        #     lambda pkt: (pkt.Variant_TypeId == 23),
+        # ),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
+
+class CommonParameter_DataValue(Packet):
+    # Struct type to hold a specific data value
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.11#_Ref127334314
+    # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.17
+
+    # this type can hold multiple different codes and types!
+    # can be used to parse variable values and other
+    # generally the initial mask has the following meandings, regarding the containing header:
+    # 0x00 : no data
+    # 0x01 : value is present (if not set, value is NULL)
+    # 0x02 : StatusCode is good if unset
+    # 0x04 : False if the SourceTimestamp is DateTime.MinValue.
+    # 0x08 : False if the ServerTimestamp is DateTime.MinValue.
+    # 0x10 : False if the SourcePicoseconds is not present.
+    # 0x20 : False if the ServerPicoseconds is not present.
+    name = "Common Parameter: Struct DataValue"
+    fields_desc = [
+        FlagsField(
+            "DV_EncodingMask",
+            0x00,
+            8,
+            {
+                0x01: "value_present",
+                0x02: "statuscode",
+                0x04: "SourceTimeStamp",
+                0x08: "ServerTimeStamp",
+                0x10: "SourcePicoseconds",
+                0x20: "ServerPicoseconds",
+            },
+        ),
+        ConditionalField(
+            # broken
+            # BuiltIn_OPCUA_Binary_Variant,
+            LEShortField("test", 0),
+            lambda pkt: pkt.DV_EncodingMask & "value_present",
+        ),
+        ConditionalField(
+            LESignedIntField("DV_StatusCode", -1),
+            lambda pkt: pkt.DV_EncodingMask & "statuscode",
+        ),
+        ConditionalField(
+            LESignedLongField("DV_SourceTimestamp", -1),
+            lambda pkt: pkt.DV_EncodingMask & "SourceTimeStamp",
+        ),
+        ConditionalField(
+            LEShortField("DV_SourcePicoseconds", -1),
+            lambda pkt: pkt.DV_EncodingMask & "SourcePicoseconds",
+        ),
+        ConditionalField(
+            LESignedLongField("DV_ServerTimestamp", -1),
+            lambda pkt: pkt.DV_EncodingMask & "ServerTimeStamp",
+        ),
+        ConditionalField(
+            LEShortField("DV_ServerPicoseconds", -1),
+            lambda pkt: pkt.DV_EncodingMask & "ServerPicoseconds",
+        ),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
+
 class CommonParameter_RequestHeader(Packet):
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33
     name = "Generic Service Request Header"
@@ -939,6 +1133,24 @@ class CommonParameter_ResponseHeader(Packet):
         AdditionalHeader,
     ]
 
+    def extract_padding(self, s):
+        return "", s
+
+
+class CommonParameter_ServiceFault(Packet):
+    # This node or parameter is special, in that it can skip the service level
+    #
+    # The ServiceFault parameter shall be returned instead of the Service
+    # response message when the serviceResult is a StatusCode with Severity Bad.
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.35
+    name = "Common Parameter: ServiceFault"
+    fields_desc = [
+        CommonParameter_ResponseHeader,
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
 
 # ============================================================================ #
 # OPC UA Binary Message Headers:
@@ -1010,54 +1222,54 @@ class OPC_UA_Binary_Message_CreateSessionRequest(Packet):
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
     fields_desc = [
         CommonParameter_RequestHeader,
-        CommonParameter_ApplicationDescription,  # clientDescription
-        LESignedIntField("ServerUri_Size", -1),
-        ConditionalField(
-            StrLenField(
-                "ServerUri",
-                "",
-                length_from=lambda pkt: pkt.ServerUri_Size,
-            ),
-            lambda pkt: pkt.ServerUri_Size != -1,
-        ),
-        LESignedIntField("EndpointUrl_Size", -1),
-        ConditionalField(
-            StrLenField(
-                "EndpointUrl",
-                "",
-                length_from=lambda pkt: pkt.EndpointUrl_Size,
-            ),
-            lambda pkt: pkt.EndpointUrl_Size != -1,
-        ),
-        LESignedIntField("SessionName_Size", -1),
-        ConditionalField(
-            StrLenField(
-                "SessionName",
-                "",
-                length_from=lambda pkt: pkt.SessionName_Size,
-            ),
-            lambda pkt: pkt.SessionName_Size != -1,
-        ),
-        LESignedIntField("ClientNonce_Size", -1),
-        ConditionalField(
-            StrLenField(
-                "ClientNonce",
-                "",
-                length_from=lambda pkt: pkt.ClientNonce_Size,
-            ),
-            lambda pkt: pkt.ClientNonce_Size != -1,
-        ),
-        LESignedIntField("ClientCertificate_Size", -1),
-        ConditionalField(
-            StrLenField(
-                "ClientCertificate",
-                "",
-                length_from=lambda pkt: pkt.ClientCertificate_Size,
-            ),
-            lambda pkt: pkt.ClientCertificate_Size != -1,
-        ),
-        LESignedLongField("RequestedSessionTimeout", 0),  # some weird timestamp
-        LESignedIntField("MaxResponseMessageSize", 0),
+        # CommonParameter_ApplicationDescription,  # clientDescription
+        # LESignedIntField("ServerUri_Size", -1),
+        # ConditionalField(
+        #     StrLenField(
+        #         "ServerUri",
+        #         "",
+        #         length_from=lambda pkt: pkt.ServerUri_Size,
+        #     ),
+        #     lambda pkt: pkt.ServerUri_Size != -1,
+        # ),
+        # LESignedIntField("EndpointUrl_Size", -1),
+        # ConditionalField(
+        #     StrLenField(
+        #         "EndpointUrl",
+        #         "",
+        #         length_from=lambda pkt: pkt.EndpointUrl_Size,
+        #     ),
+        #     lambda pkt: pkt.EndpointUrl_Size != -1,
+        # ),
+        # LESignedIntField("SessionName_Size", -1),
+        # ConditionalField(
+        #     StrLenField(
+        #         "SessionName",
+        #         "",
+        #         length_from=lambda pkt: pkt.SessionName_Size,
+        #     ),
+        #     lambda pkt: pkt.SessionName_Size != -1,
+        # ),
+        # LESignedIntField("ClientNonce_Size", -1),
+        # ConditionalField(
+        #     StrLenField(
+        #         "ClientNonce",
+        #         "",
+        #         length_from=lambda pkt: pkt.ClientNonce_Size,
+        #     ),
+        #     lambda pkt: pkt.ClientNonce_Size != -1,
+        # ),
+        # LESignedIntField("ClientCertificate_Size", -1),
+        # ConditionalField(
+        #     StrLenField(
+        #         "ClientCertificate",
+        #         "",
+        #         length_from=lambda pkt: pkt.ClientCertificate_Size,
+        #     ),
+        #     lambda pkt: pkt.ClientCertificate_Size != -1,
+        # ),
+        # LESignedLongField("RequestedSessionTimeout", 0),  # some weird timestamp
+        # LESignedIntField("MaxResponseMessageSize", 0),
     ]
 
 
@@ -1226,8 +1438,7 @@ class OPC_UA_Binary_Message_CreateSessionResponse(Packet):
 
 class OPC_UA_Binary_Message_ActivateSessionRequest(Packet):
     name = "ActivateSessionRequest Service Message"
-    # 7.1.2.3 Hello Message
-    # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3
     fields_desc = [
         CommonParameter_RequestHeader,
         CommonParameter_ClientSignature,
@@ -1261,10 +1472,42 @@ class OPC_UA_Binary_Message_ActivateSessionRequest(Packet):
     ]
 
 
+class OPC_UA_Binary_Message_ActivateSessionResponse(Packet):
+    name = "ActivateSessionResponse Service Message"
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3
+    fields_desc = [
+        CommonParameter_ResponseHeader,
+        LESignedIntField("ServerNonceSize", -1),
+        ConditionalField(
+            StrLenField(
+                "ServerNonce",
+                "",
+                length_from=lambda pkt: pkt.ServerNonceSize,
+            ),
+            lambda pkt: pkt.ServerNonceSize != -1,
+        ),
+        FieldLenField("StatusCodes_ArraySize", None, fmt="<I", count_of="StatusCodes"),
+        PacketListField(
+            "StatusCodes",
+            None,
+            CommonParameter_ReadValueId,
+            count_from=lambda pkt: pkt.StatusCodes_ArraySize,
+        ),
+        FieldLenField(
+            "DiagnosticsInfo_ArraySize", None, fmt="<I", count_of="DiagnosticsInfo"
+        ),
+        PacketListField(
+            "DiagnosticsInfo",
+            None,
+            CommonParameter_DiagnosticInfo,
+            count_from=lambda pkt: pkt.DiagnosticsInfo_ArraySize,
+        ),
+    ]
+
+
 class OPC_UA_Binary_Message_ReadRequest(Packet):
     name = "ReadRequest Service Message"
-    # 7.1.2.3 Hello Message
-    # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.2
     fields_desc = [
         CommonParameter_RequestHeader,
         LESignedLongField("maxAge", -1),
@@ -1279,6 +1522,32 @@ class OPC_UA_Binary_Message_ReadRequest(Packet):
             None,
             CommonParameter_ReadValueId,
             count_from=lambda pkt: pkt.NodesToRead_ArraySize,
+        ),
+    ]
+
+
+class OPC_UA_Binary_Message_ReadResponse(Packet):
+    name = "ReadResponse Service Message"
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.2
+    fields_desc = [
+        CommonParameter_ResponseHeader,
+        FieldLenField(
+            "RequestResult_ArraySize", None, fmt="<I", count_of="RequestResult"
+        ),
+        PacketListField(
+            "RequestResult",
+            None,
+            CommonParameter_DataValue,
+            count_from=lambda pkt: pkt.RequestResult_ArraySize,
+        ),
+        FieldLenField(
+            "DiagnosticsInfo_ArraySize", None, fmt="<I", count_of="DiagnosticsInfo"
+        ),
+        PacketListField(
+            "DiagnosticsInfo",
+            None,
+            CommonParameter_DiagnosticInfo,
+            count_from=lambda pkt: pkt.DiagnosticsInfo_ArraySize,
         ),
     ]
 
@@ -1299,6 +1568,24 @@ class OPC_UA_Binary_Message_CloseSessionRequest(Packet):
     fields_desc = [
         CommonParameter_RequestHeader,
         ByteField("DeleteSubscriptions", 0),
+    ]
+
+
+class OPC_UA_Binary_Message_CloseSessionResponse(Packet):
+    """
+    https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.4 \n
+
+    This Service is used to terminate a Session. \n
+
+    Service Results: \n
+    Bad_SessionIdInvalid
+
+    """
+
+    name = "CloseSessionResponse Service Message"
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.4
+    fields_desc = [
+        CommonParameter_ResponseHeader,
     ]
 
 
@@ -1760,6 +2047,33 @@ bind_layers(
     OPC_UA_Binary_Message_CreateSessionResponse,
     NodeId_Identifier_Numeric_4B=464,
 )
+
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_ActivateSessionResponse,
+    NodeId_Identifier_Numeric_4B=470,
+)
+
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_ReadResponse,
+    NodeId_Identifier_Numeric_4B=634,
+)
+
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_CloseSessionResponse,
+    NodeId_Identifier_Numeric_4B=476,
+)
+
+# this one is special, since it can skip the service level!
+# https://reference.opcfoundation.org/Core/Part4/v105/docs/7.35
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    CommonParameter_ServiceFault,
+    NodeId_Identifier_Numeric_4B=397,
+)
+
 # ---------------------------------------------------------------------------- #
 
 
