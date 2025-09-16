@@ -102,7 +102,7 @@ class Generic_NodeId(Packet):
             or (pkt.GenericNode_NodeID_Mask == 5),
         ),
         ConditionalField(
-            StrLenField(
+            XStrLenField(
                 "GenericNode_NodeIdentifier_String",
                 "",
                 length_from=lambda pkt: pkt.GenericNode_NodeIdentifier_String_Size,
@@ -640,7 +640,7 @@ class CommonParameter_EndpointDescription(Packet):
         # we need bytestring here instead, not the custom type:
         LESignedIntField("ED_ServerCertificate_Encoded_Size", -1),
         ConditionalField(
-            StrLenField(
+            XStrLenField(
                 "ED_ServerCertificate_Encoded",
                 "",
                 length_from=lambda pkt: pkt.ED_ServerCertificate_Encoded_Size,
@@ -1268,7 +1268,7 @@ class OPC_UA_Binary_Message_OpenSecureChannelRequest(Packet):
         LEIntField("MessageSecurityMode", 0x00),
         LESignedIntField("ClientNonceSize", -1),
         ConditionalField(
-            StrLenField(
+            XStrFixedLenField(
                 "ClientNonce",
                 "",
                 length_from=lambda pkt: pkt.ClientNonceSize,
@@ -1293,7 +1293,7 @@ class OPC_UA_Binary_Message_OpenSecureChannelResponse(Packet):
         LEIntField("RevisedLifetime", 0x00),
         LESignedIntField("ServerNonce_Size", -1),
         ConditionalField(
-            StrLenField(
+            XStrFixedLenField(
                 "ServerNonce",
                 "",
                 length_from=lambda pkt: pkt.ServerNonce_Size,
@@ -1344,7 +1344,7 @@ class OPC_UA_Binary_Message_CreateSessionRequest(Packet):
         ),
         LESignedIntField("ClientNonce_Size", -1),
         ConditionalField(
-            StrLenField(
+            XStrFixedLenField(
                 "ClientNonce",
                 "",
                 length_from=lambda pkt: pkt.ClientNonce_Size,
@@ -1353,14 +1353,14 @@ class OPC_UA_Binary_Message_CreateSessionRequest(Packet):
         ),
         LESignedIntField("ClientCertificate_Size", -1),
         ConditionalField(
-            StrLenField(
+            XStrFixedLenField(
                 "ClientCertificate",
                 "",
                 length_from=lambda pkt: pkt.ClientCertificate_Size,
             ),
             lambda pkt: pkt.ClientCertificate_Size != -1,
         ),
-        UTCTimeField("RequestedSessionTimeout", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7), 
+        XStrFixedLenField("RequestedSessionTimeout", 0, 8),
         LESignedIntField("MaxResponseMessageSize", 0),
     ]
 
@@ -1398,7 +1398,7 @@ class OPC_UA_Binary_Message_CreateSessionResponse(Packet):
             lambda pkt: (pkt.Response_SessionId_NodeID_Mask == 2),
         ),
         ConditionalField(
-            StrFixedLenField("Response_SessionId_NamespaceIndex_GUID", 0, length=16),
+            XStrFixedLenField("Response_SessionId_NamespaceIndex_GUID", 0, length=16),
             lambda pkt: (pkt.Response_SessionId_NodeID_Mask == 4),
         ),
         ConditionalField(
@@ -1443,7 +1443,7 @@ class OPC_UA_Binary_Message_CreateSessionResponse(Packet):
             lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 2),
         ),
         ConditionalField(
-            StrFixedLenField(
+            XStrFixedLenField(
                 "Response_AuthenticationToken_NamespaceIndex_GUID", 0, length=16
             ),
             lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 4),
@@ -1454,7 +1454,7 @@ class OPC_UA_Binary_Message_CreateSessionResponse(Packet):
             or (pkt.Response_AuthenticationToken_NodeID_Mask == 5),
         ),
         ConditionalField(
-            StrLenField(
+            XStrLenField(
                 "Response_AuthenticationToken_NodeIdentifier_String",
                 "",
                 length_from=lambda pkt: pkt.Response_AuthenticationToken_NodeIdentifier_String_Size,
@@ -1462,10 +1462,10 @@ class OPC_UA_Binary_Message_CreateSessionResponse(Packet):
             lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 3)
             or (pkt.Response_AuthenticationToken_NodeID_Mask == 5),
         ),
-        UTCTimeField("RevisedSessionTimeout", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7), 
+        XStrFixedLenField("RevisedSessionTimeout", 0, 8),
         LESignedIntField("ServerNonce_Size", -1),
         ConditionalField(
-            StrLenField(
+            XStrFixedLenField(
                 "ServerNonce",
                 "",
                 length_from=lambda pkt: pkt.ServerNonce_Size,
@@ -1474,7 +1474,7 @@ class OPC_UA_Binary_Message_CreateSessionResponse(Packet):
         ),
         LESignedIntField("ServerCertificate_Size", -1),
         ConditionalField(
-            StrLenField(
+            XStrFixedLenField(
                 "ServerCertificate",
                 "",
                 length_from=lambda pkt: pkt.ServerCertificate_Size,
@@ -1576,7 +1576,7 @@ class OPC_UA_Binary_Message_ActivateSessionResponse(Packet):
         CommonParameter_ResponseHeader,
         LESignedIntField("ServerNonceSize", -1),
         ConditionalField(
-            StrLenField(
+            XStrFixedLenField(
                 "ServerNonce",
                 "",
                 length_from=lambda pkt: pkt.ServerNonceSize,
