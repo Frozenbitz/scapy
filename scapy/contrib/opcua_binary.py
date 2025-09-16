@@ -106,10 +106,15 @@ class Generic_NodeId(Packet):
                 "",
                 length_from=lambda pkt: pkt.GenericNode_NodeIdentifier_String_Size,
             ),
-            lambda pkt: (pkt.GenericNode_NodeID_Mask == 3)
-            or (pkt.GenericNode_NodeID_Mask == 5),
+            lambda pkt: (
+                (pkt.GenericNode_NodeID_Mask == 3) or (pkt.GenericNode_NodeID_Mask == 5)
+            )
+            and (pkt.GenericNode_NodeIdentifier_String_Size != -1),
         ),
     ]
+
+    def extract_padding(self, s):
+        return "", s
 
 
 _diagnosticInfo_flags = {
@@ -121,6 +126,15 @@ _diagnosticInfo_flags = {
     0x20: "InnerStatusCode",
     0x40: "InnerDiagnosticInfo",
     0x80: "unused",
+}
+
+_dataValue_Encoding_flags = {
+    0x01: "value_present",
+    0x02: "statuscode",
+    0x04: "SourceTimeStamp",
+    0x08: "ServerTimeStamp",
+    0x10: "SourcePicoseconds",
+    0x20: "ServerPicoseconds",
 }
 
 
@@ -948,34 +962,51 @@ class BuiltIn_OPCUA_Binary_Variant(Packet):
             StrFixedLenField("Variant_Value_GUID", "", length=16),
             lambda pkt: (pkt.Variant_TypeId == 14),
         ),
-        # ConditionalField(
-        #     CustomParameter_GenericString,
-        #     lambda pkt: (pkt.Variant_TypeId == 15),  # Bytestring
-        # ),
-        # we skip XML Element
-        # ConditionalField(
-        #     Generic_NodeId,
-        #     lambda pkt: (pkt.Variant_TypeId == 17),
-        # ),
-        # ConditionalField(
-        #     BuiltIn_OPCUA_Binary_QualifiedName,
-        #     lambda pkt: (pkt.Variant_TypeId == 20),
-        # ),
-        # TODO: this creates an exception for some default value
         ConditionalField(
-            BuiltIn_OPCUA_Binary_LocalizedText,
+            PacketField(
+                "GenericString",
+                CustomParameter_GenericString(),
+                CustomParameter_GenericString,
+            ),
+            lambda pkt: (pkt.Variant_TypeId == 15),  # Bytestring
+        ),
+        # we skip XML Element
+        ConditionalField(
+            PacketField("Generic_NodeId", Generic_NodeId(), Generic_NodeId),
+            lambda pkt: (pkt.Variant_TypeId == 17),
+        ),
+        ConditionalField(
+            PacketField(
+                "Qualified_Name",
+                BuiltIn_OPCUA_Binary_QualifiedName(),
+                BuiltIn_OPCUA_Binary_QualifiedName,
+            ),
+            lambda pkt: (pkt.Variant_TypeId == 20),
+        ),
+        ConditionalField(
+            PacketField(
+                "Localized_Text",
+                BuiltIn_OPCUA_Binary_LocalizedText(),
+                BuiltIn_OPCUA_Binary_LocalizedText,
+            ),
             lambda pkt: (pkt.Variant_TypeId == 21),
         ),
         # we skip extension object
         # we cannot call this recursively
         # ConditionalField(
         #     CommonParameter_DataValue,
+        #     PacketField("DataValue", CommonParameter_DataValue(), CommonParameter_DataValue),
         #     lambda pkt: (pkt.Variant_TypeId == 23),
         # ),
-        # ConditionalField(
-        #     CommonParameter_DiagnosticInfo,
-        #     lambda pkt: (pkt.Variant_TypeId == 23),
-        # ),
+        # inner diagnostic info
+        ConditionalField(
+            PacketField(
+                "DiagnosticInfo",
+                CommonParameter_DiagnosticInfo(),
+                CommonParameter_DiagnosticInfo,
+            ),
+            lambda pkt: (pkt.Variant_TypeId == 23),
+        ),
     ]
 
     def extract_padding(self, s):
@@ -1003,19 +1034,16 @@ class CommonParameter_DataValue(Packet):
             "DV_EncodingMask",
             0x00,
             8,
-            {
-                0x01: "value_present",
-                0x02: "statuscode",
-                0x04: "SourceTimeStamp",
-                0x08: "ServerTimeStamp",
-                0x10: "SourcePicoseconds",
-                0x20: "ServerPicoseconds",
-            },
+            _dataValue_Encoding_flags,
         ),
         ConditionalField(
             # broken
             # BuiltIn_OPCUA_Binary_Variant,
-            LEShortField("test", 0),
+            PacketField(
+                "DV_Variant_DiagnosticInfo",
+                BuiltIn_OPCUA_Binary_Variant(),
+                BuiltIn_OPCUA_Binary_Variant,
+            ),
             lambda pkt: pkt.DV_EncodingMask & "value_present",
         ),
         ConditionalField(
@@ -1090,6 +1118,13 @@ class CommonParameter_RequestHeader(Packet):
             lambda pkt: (pkt.Request_Header_NodeID_Mask == 3)
             or (pkt.Request_Header_NodeID_Mask == 5),
         ),
+        # TODO: we should be able to package the default nodes into a packet
+        # using a packetfield in this instance doesnt work?
+        # PacketField(
+        #     "RequestHeader_NodeId",
+        #     Generic_NodeId(),
+        #     Generic_NodeId,
+        # ),
         XLELongField("Timestamp", 0),  # this is some sort of UTC stamp?
         LEIntField("RequestHandle", 0),
         XLEIntField("ReturnDiagnostics", 0),  # this should be a flags field?
@@ -1869,10 +1904,10 @@ class OPC_UA_Binary_SecureConversationMessage(Packet):
     # 7.1.2.3 Hello Message
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
     fields_desc = [
-        IntField("SecureChannelId", 0),
-        IntField("SecurityTokenId", 0),
-        IntField("SequenceNumber", 0),
-        IntField("RequestId", 0),
+        LEIntField("SecureChannelId", 0),
+        LEIntField("SecurityTokenId", 0),
+        LEIntField("SequenceNumber", 0),
+        LEIntField("RequestId", 0),
     ]
 
 
