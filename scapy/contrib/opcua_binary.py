@@ -54,6 +54,7 @@ from scapy.layers.inet import TCP
 # there might be some other way to export or generate these?
 from scapy.contrib.opcua_binary_codes import _OPC_UA_Binary_Error_Codes
 
+
 # ============================================================================ #
 #
 #       Field Definitions
@@ -1100,7 +1101,7 @@ class CommonParameter_DataValue(Packet):
             lambda pkt: pkt.DV_EncodingMask & "SourceTimeStamp",
         ),
         ConditionalField(
-            LEShortField("DV_SourcePicoseconds", -1),
+            UTCTimeField("DV_SourcePicoseconds", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7), 
             lambda pkt: pkt.DV_EncodingMask & "SourcePicoseconds",
         ),
         ConditionalField(
@@ -1108,7 +1109,7 @@ class CommonParameter_DataValue(Packet):
             lambda pkt: pkt.DV_EncodingMask & "ServerTimeStamp",
         ),
         ConditionalField(
-            LEShortField("DV_ServerPicoseconds", -1),
+            UTCTimeField("DV_ServerPicoseconds", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7),
             lambda pkt: pkt.DV_EncodingMask & "ServerPicoseconds",
         ),
     ]
@@ -1168,7 +1169,7 @@ class CommonParameter_RequestHeader(Packet):
         #     Generic_NodeId(),
         #     Generic_NodeId,
         # ),
-        XLELongField("Timestamp", 0),  # this is some sort of UTC stamp?
+        UTCTimeField("Timestamp", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7), 
         LEIntField("RequestHandle", 0),
         XLEIntField("ReturnDiagnostics", 0),  # this should be a flags field?
         LESignedIntField("AuditEntryIdSize", -1),
@@ -1195,9 +1196,8 @@ class CommonParameter_ResponseHeader(Packet):
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.4
     name = "Generic Service Response Header"
     fields_desc = [
-        XLELongField("Timestamp", 0),  # this is some sort of UTC stamp?
+        UTCTimeField("Timestamp", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7), 
         LEIntField("Response_RequestHandle", 0),
-        # LEIntField("Response_StatusCode", 0),
         PacketField("Response_StatusCode", OPC_UA_Binary_StatusCode() ,OPC_UA_Binary_StatusCode,),
         CommonParameter_DiagnosticInfo,
         FieldLenField(
@@ -1360,7 +1360,7 @@ class OPC_UA_Binary_Message_CreateSessionRequest(Packet):
             ),
             lambda pkt: pkt.ClientCertificate_Size != -1,
         ),
-        LESignedLongField("RequestedSessionTimeout", 0),  # some weird timestamp
+        UTCTimeField("RequestedSessionTimeout", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7), 
         LESignedIntField("MaxResponseMessageSize", 0),
     ]
 
@@ -1462,7 +1462,7 @@ class OPC_UA_Binary_Message_CreateSessionResponse(Packet):
             lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 3)
             or (pkt.Response_AuthenticationToken_NodeID_Mask == 5),
         ),
-        LESignedLongField("RevisedSessionTimeous", -1),
+        UTCTimeField("RevisedSessionTimeout", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7), 
         LESignedIntField("ServerNonce_Size", -1),
         ConditionalField(
             StrLenField(
