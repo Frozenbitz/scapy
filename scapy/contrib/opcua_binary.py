@@ -135,6 +135,8 @@ _dataValue_Encoding_flags = {
     0x08: "ServerTimeStamp",
     0x10: "SourcePicoseconds",
     0x20: "ServerPicoseconds",
+    0x40: "reserved1",
+    0x80: "reserved2",
 }
 
 
@@ -184,7 +186,7 @@ class CustomParameter_GenericString(Packet):
 # parsed some other way...
 # https://python-opcua.readthedocs.io/en/latest/_modules/opcua/ua/status_codes.html
 class OPC_UA_Binary_StatusCode(Packet):
-    name = "Parses a single field containing a OPC UA StatusCode"
+    name = "UA StatusCode"
     fields_desc = [
         LEIntEnumField(
             "StatusCode",
@@ -192,6 +194,9 @@ class OPC_UA_Binary_StatusCode(Packet):
             _OPC_UA_Binary_Error_Codes,
         ),
     ]
+
+    def extract_padding(self, s):
+        return "", s
 
 
 class AdditionalHeader(Packet):
@@ -215,6 +220,7 @@ class OPC_UA_Binary_Message_EncodedNodeId_2B(Packet):
     fields_desc = [
         ByteField("NodeId_Identifier_Numeric_2B", 0x00),
     ]
+
 
 
 # these encodings here are needed to map the service layer to the binary protocol
@@ -252,6 +258,9 @@ class BuiltIn_OPCUA_Binary_QualifiedName(Packet):
             lambda pkt: pkt.QualifiedName_Size != -1,
         ),
     ]
+
+    def extract_padding(self, s):
+        return "", s
 
 
 class BuiltIn_OPCUA_Binary_LocalizedText(Packet):
@@ -298,6 +307,9 @@ class BuiltIn_OPCUA_Binary_LocalizedText(Packet):
             and (pkt.LocalizedText_Size != -1),
         ),
     ]
+
+    def extract_padding(self, s):
+        return "", s
 
 
 class BuiltIn_OPCUA_ExtensionObject(Packet):
@@ -725,7 +737,8 @@ class CommonParameter_DiagnosticInfo(Packet):
             and (pkt.DI_AdditionalInfo_Size != -1),
         ),
         ConditionalField(
-            LEIntField("DI_Inner_StatusCode", 0),
+            # LEIntField("DI_Inner_StatusCode", 0),
+            PacketField("DI_InnerStatusCode", OPC_UA_Binary_StatusCode() ,OPC_UA_Binary_StatusCode,),
             lambda pkt: pkt.DI_EncodingMask & "InnerStatusCode",
         ),
         # here could follow some inner diag info?
@@ -743,18 +756,46 @@ class CommonParameter_ReadValueId(Packet):
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.29#_Ref133162567
     name = "Common Parameter: Struct ReadValueId"
     fields_desc = [
-        XByteField("NodeID_EncodeMask", 0x01),  # default should be 4B encoding
+        XByteField("RVID_NodeID_Mask", 1),  # default should be 4B encoding
         ConditionalField(
-            ByteField("NodeId_Identifier_Numeric_2B", 0),
-            lambda pkt: pkt.NodeID_EncodeMask == 0x00,
+            ByteField("RVID_Identifier_Numeric_2B", 0),
+            lambda pkt: pkt.RVID_NodeID_Mask == 0,
         ),
         ConditionalField(
-            ByteField("NodeId_Namespace_Index", 0),
-            lambda pkt: pkt.NodeID_EncodeMask == 0x01,
+            ByteField("RVID_Namespace_Index_4B", 0),
+            lambda pkt: (pkt.RVID_NodeID_Mask == 1),
         ),
         ConditionalField(
-            LEShortField("NodeId_Identifier_Numeric_4B", 0),
-            lambda pkt: pkt.NodeID_EncodeMask == 0x01,
+            LEShortField("RVID_NodeIdentifier_Numeric_4B", 0),
+            lambda pkt: (pkt.RVID_NodeID_Mask == 1),
+        ),
+        ConditionalField(
+            LEShortField("RVID_NamespaceIndex_Default", 0),
+            lambda pkt: (pkt.RVID_NodeID_Mask == 2)
+            or (pkt.RVID_NodeID_Mask == 3)
+            or (pkt.RVID_NodeID_Mask == 4)
+            or (pkt.RVID_NodeID_Mask == 5),
+        ),
+        ConditionalField(
+            LEIntField("RVID_NamespaceIndex_Numeric", 0),
+            lambda pkt: (pkt.RVID_NodeID_Mask == 2),
+        ),
+        ConditionalField(
+            StrFixedLenField("RVID_NamespaceIndex_GUID", 0, length=16),
+            lambda pkt: (pkt.RVID_NodeID_Mask == 4),
+        ),
+        ConditionalField(
+            LEIntField("RVID_NodeIdentifier_String_Size", 0),
+            lambda pkt: (pkt.RVID_NodeID_Mask == 3) or (pkt.RVID_NodeID_Mask == 5),
+        ),
+        ConditionalField(
+            StrLenField(
+                "RVID_NodeIdentifier_String",
+                "",
+                length_from=lambda pkt: pkt.RVID_NodeIdentifier_String_Size,
+            ),
+            lambda pkt: ((pkt.RVID_NodeID_Mask == 3) or (pkt.RVID_NodeID_Mask == 5))
+            and (pkt.RVID_NodeIdentifier_String_Size != -1),
         ),
         LEIntField("AttributeId", 0),
         LESignedIntField("IndexRange_Size", -1),
@@ -1037,17 +1078,21 @@ class CommonParameter_DataValue(Packet):
             _dataValue_Encoding_flags,
         ),
         ConditionalField(
-            # broken
-            # BuiltIn_OPCUA_Binary_Variant,
             PacketField(
-                "DV_Variant_DiagnosticInfo",
+                "DV_Variant_Data",
                 BuiltIn_OPCUA_Binary_Variant(),
                 BuiltIn_OPCUA_Binary_Variant,
             ),
             lambda pkt: pkt.DV_EncodingMask & "value_present",
         ),
         ConditionalField(
-            LESignedIntField("DV_StatusCode", -1),
+            #     LEIntEnumField(
+            #     "StatusCode",
+            #     0x01,
+            #     _OPC_UA_Binary_Error_Codes,
+            # ),
+            PacketField("code", OPC_UA_Binary_StatusCode() ,OPC_UA_Binary_StatusCode,),
+            
             lambda pkt: pkt.DV_EncodingMask & "statuscode",
         ),
         ConditionalField(
@@ -1076,47 +1121,45 @@ class CommonParameter_RequestHeader(Packet):
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33
     name = "Generic Service Request Header"
     fields_desc = [
-        XByteField("Request_Header_NodeID_Mask", 1),  # default should be 4B encoding
+        XByteField("NodeID_Mask", 1),  # default should be 4B encoding
         ConditionalField(
-            ByteField("Request_Header_Identifier_Numeric_2B", 0),
-            lambda pkt: pkt.Request_Header_NodeID_Mask == 0,
+            ByteField("Identifier_Numeric_2B", 0),
+            lambda pkt: pkt.NodeID_Mask == 0,
         ),
         ConditionalField(
-            ByteField("Request_Header_Namespace_Index_4B", 0),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 1),
+            ByteField("Namespace_Index_4B", 0),
+            lambda pkt: (pkt.NodeID_Mask == 1),
         ),
         ConditionalField(
-            LEShortField("Request_Header_NodeIdentifier_Numeric_4B", 0),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 1),
+            LEShortField("NodeIdentifier_Numeric_4B", 0),
+            lambda pkt: (pkt.NodeID_Mask == 1),
         ),
         ConditionalField(
-            LEShortField("Request_Header_NamespaceIndex_Default", 0),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 2)
-            or (pkt.Request_Header_NodeID_Mask == 3)
-            or (pkt.Request_Header_NodeID_Mask == 4)
-            or (pkt.Request_Header_NodeID_Mask == 5),
+            LEShortField("NamespaceIndex_Default", 0),
+            lambda pkt: (pkt.NodeID_Mask == 2)
+            or (pkt.NodeID_Mask == 3)
+            or (pkt.NodeID_Mask == 4)
+            or (pkt.NodeID_Mask == 5),
         ),
         ConditionalField(
-            LEIntField("Request_Header_NamespaceIndex_Numeric", 0),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 2),
+            LEIntField("NamespaceIndex_Numeric", 0),
+            lambda pkt: (pkt.NodeID_Mask == 2),
         ),
         ConditionalField(
-            StrFixedLenField("Request_Header_NamespaceIndex_GUID", 0, length=16),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 4),
+            StrFixedLenField("NamespaceIndex_GUID", 0, length=16),
+            lambda pkt: (pkt.NodeID_Mask == 4),
         ),
         ConditionalField(
-            LEIntField("Request_Header_NodeIdentifier_String_Size", 0),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 3)
-            or (pkt.Request_Header_NodeID_Mask == 5),
+            LEIntField("NodeIdentifier_String_Size", 0),
+            lambda pkt: (pkt.NodeID_Mask == 3) or (pkt.NodeID_Mask == 5),
         ),
         ConditionalField(
             StrLenField(
-                "Request_Header_NodeIdentifier_String",
+                "NodeIdentifier_String",
                 "",
-                length_from=lambda pkt: pkt.Request_Header_NodeIdentifier_String_Size,
+                length_from=lambda pkt: pkt.NodeIdentifier_String_Size,
             ),
-            lambda pkt: (pkt.Request_Header_NodeID_Mask == 3)
-            or (pkt.Request_Header_NodeID_Mask == 5),
+            lambda pkt: (pkt.NodeID_Mask == 3) or (pkt.NodeID_Mask == 5),
         ),
         # TODO: we should be able to package the default nodes into a packet
         # using a packetfield in this instance doesnt work?
@@ -1141,6 +1184,9 @@ class CommonParameter_RequestHeader(Packet):
         AdditionalHeader,
     ]
 
+    def extract_padding(self, s):
+        return "", s
+
 
 class CommonParameter_ResponseHeader(Packet):
     # check part 6: https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7
@@ -1151,7 +1197,8 @@ class CommonParameter_ResponseHeader(Packet):
     fields_desc = [
         XLELongField("Timestamp", 0),  # this is some sort of UTC stamp?
         LEIntField("Response_RequestHandle", 0),
-        LEIntField("Response_StatusCode", 0),
+        # LEIntField("Response_StatusCode", 0),
+        PacketField("Response_StatusCode", OPC_UA_Binary_StatusCode() ,OPC_UA_Binary_StatusCode,),
         CommonParameter_DiagnosticInfo,
         FieldLenField(
             "Response_StringTable_ArraySize",
@@ -1210,7 +1257,12 @@ class OPC_UA_Binary_Message_OpenSecureChannelRequest(Packet):
     # 7.1.2.3 Hello Message
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
     fields_desc = [
-        CommonParameter_RequestHeader,
+        # CommonParameter_RequestHeader,
+        PacketField(
+            "OpenSecureChannelRequest_Header",
+            CommonParameter_RequestHeader(),
+            CommonParameter_RequestHeader,
+        ),
         LEIntField("ClientProtocolVersion", 0x00),
         LEIntField("SecurityTokenRequestType", 0x00),
         LEIntField("MessageSecurityMode", 0x00),
@@ -1256,7 +1308,12 @@ class OPC_UA_Binary_Message_CreateSessionRequest(Packet):
     # 7.1.2.3 Hello Message
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
     fields_desc = [
-        CommonParameter_RequestHeader,
+        # CommonParameter_RequestHeader,
+        PacketField(
+            "CreateSessionRequest_Header",
+            CommonParameter_RequestHeader(),
+            CommonParameter_RequestHeader,
+        ),
         CommonParameter_ApplicationDescription,  # clientDescription
         LESignedIntField("ServerUri_Size", -1),
         ConditionalField(
@@ -1475,7 +1532,12 @@ class OPC_UA_Binary_Message_ActivateSessionRequest(Packet):
     name = "ActivateSessionRequest Service Message"
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3
     fields_desc = [
-        CommonParameter_RequestHeader,
+        # CommonParameter_RequestHeader,
+        PacketField(
+            "ActivateSessionRequest_Header",
+            CommonParameter_RequestHeader(),
+            CommonParameter_RequestHeader,
+        ),
         CommonParameter_ClientSignature,
         FieldLenField(
             "ClientSoftwareCertificates_ArraySize",
@@ -1544,7 +1606,12 @@ class OPC_UA_Binary_Message_ReadRequest(Packet):
     name = "ReadRequest Service Message"
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.2
     fields_desc = [
-        CommonParameter_RequestHeader,
+        # CommonParameter_RequestHeader,
+        PacketField(
+            "ReadRequest_Header",
+            CommonParameter_RequestHeader(),
+            CommonParameter_RequestHeader,
+        ),
         LESignedLongField("maxAge", -1),
         LEIntEnumField(
             "TimestampsToReturn",
@@ -1565,7 +1632,12 @@ class OPC_UA_Binary_Message_ReadResponse(Packet):
     name = "ReadResponse Service Message"
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.2
     fields_desc = [
-        CommonParameter_ResponseHeader,
+        # CommonParameter_ResponseHeader,
+        PacketField(
+            "ReadResponse_Header",
+            CommonParameter_ResponseHeader(),
+            CommonParameter_ResponseHeader,
+        ),
         FieldLenField(
             "RequestResult_ArraySize", None, fmt="<I", count_of="RequestResult"
         ),
@@ -1601,7 +1673,12 @@ class OPC_UA_Binary_Message_CloseSessionRequest(Packet):
     name = "CloseSessionRequest Service Message"
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.4
     fields_desc = [
-        CommonParameter_RequestHeader,
+        # CommonParameter_RequestHeader,
+        PacketField(
+            "CloseSessionRequest_Header",
+            CommonParameter_RequestHeader(),
+            CommonParameter_RequestHeader,
+        ),
         ByteField("DeleteSubscriptions", 0),
     ]
 
@@ -1620,7 +1697,12 @@ class OPC_UA_Binary_Message_CloseSessionResponse(Packet):
     name = "CloseSessionResponse Service Message"
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.4
     fields_desc = [
-        CommonParameter_ResponseHeader,
+        # CommonParameter_ResponseHeader,
+        PacketField(
+            "CloseSecureChannelResponse_Header",
+            CommonParameter_ResponseHeader(),
+            CommonParameter_ResponseHeader,
+        ),
     ]
 
 
@@ -1628,7 +1710,26 @@ class OPC_UA_Binary_Message_CloseSecureChannelRequest(Packet):
     name = "CloseSecureChannelRequest Service Message"
     #
     fields_desc = [
-        CommonParameter_RequestHeader,
+        PacketField(
+            "CloseSecureChannelRequest_Header",
+            CommonParameter_RequestHeader(),
+            CommonParameter_RequestHeader,
+        ),
+    ]
+
+
+class OPC_UA_Binary_Message_BrowseRequest(Packet):
+    name = "BrowseRequest Service Message"
+    #
+    fields_desc = [
+        PacketField(
+            "BrowseRequest_Header",
+            CommonParameter_RequestHeader(),
+            CommonParameter_RequestHeader,
+        ),
+        # CommonParameter_RequestHeader,
+        # from here we would need to parse the payload for specific nodes and views
+        # so no more decoding
     ]
 
 
@@ -1933,7 +2034,8 @@ class OPC_UA_Binary_Error(Packet):
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.5
     fields_desc = [
         # XLEIntField("Error", 0),
-        OPC_UA_Binary_StatusCode,
+        # OPC_UA_Binary_StatusCode,
+        PacketField("ErrorCode", OPC_UA_Binary_StatusCode() ,OPC_UA_Binary_StatusCode,),
         LESignedIntField("ReasonSize", -1),
         ConditionalField(
             StrLenField(
@@ -2068,6 +2170,12 @@ bind_layers(
     OPC_UA_Binary_Message_EncodedNodeId_4B,
     OPC_UA_Binary_Message_CloseSecureChannelRequest,
     NodeId_Identifier_Numeric_4B=452,
+)
+
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_BrowseRequest,
+    NodeId_Identifier_Numeric_4B=527,
 )
 
 # Bind the service response layers
