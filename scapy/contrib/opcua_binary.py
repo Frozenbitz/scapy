@@ -201,11 +201,14 @@ class OPC_UA_Binary_StatusCode(Packet):
 
 
 class AdditionalHeader(Packet):
-    name = "Some appendix for the Request Header"
+    name = "RequestHeader Appendix"
     fields_desc = [
         LEShortField("AdditionalHeader_NodeID", 0x00),  # 2-byte version
         ByteField("EncodingMask", 0x00),
     ]
+
+    def extract_padding(self, s):
+        return "", s
 
 
 # this will probably never be used
@@ -223,7 +226,6 @@ class OPC_UA_Binary_Message_EncodedNodeId_2B(Packet):
     ]
 
 
-
 # these encodings here are needed to map the service layer to the binary protocol
 # for other NodeIds we can create some additional types, but not for the different
 # mappings required for the initial service layer
@@ -237,7 +239,7 @@ class OPC_UA_Binary_Message_EncodedNodeId_4B(Packet):
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/?r=_Ref131423295
     name = "Node Id: DataEncoding 4Byte format"
     fields_desc = [
-        ByteField("NodeId_Namespace_Index", b"00"),
+        ByteField("NodeId_Namespace_Index", 0),
         # numeric id for the 4-byte representation
         LEShortField("NodeId_Identifier_Numeric_4B", 0x00),
     ]
@@ -377,7 +379,7 @@ class CommonParameter_ApplicationDescription(Packet):
         # localized text for applicationName
         ByteEnumField(
             "ApplicationName_EncodingMask",
-            1,  # binary body
+            0,  # binary body
             {1: "Locale", 2: "Normal Text", 3: "Locale and Text"},
         ),
         ConditionalField(
@@ -739,7 +741,11 @@ class CommonParameter_DiagnosticInfo(Packet):
         ),
         ConditionalField(
             # LEIntField("DI_Inner_StatusCode", 0),
-            PacketField("DI_InnerStatusCode", OPC_UA_Binary_StatusCode() ,OPC_UA_Binary_StatusCode,),
+            PacketField(
+                "DI_InnerStatusCode",
+                OPC_UA_Binary_StatusCode(),
+                OPC_UA_Binary_StatusCode,
+            ),
             lambda pkt: pkt.DI_EncodingMask & "InnerStatusCode",
         ),
         # here could follow some inner diag info?
@@ -851,28 +857,31 @@ class CommonParameter_ClientSignature(Packet):
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.37#_Ref153782728
     name = "Common Parameter: Struct SignatureData for ClientSignature"
     fields_desc = [
-        LESignedIntField("ClientSignature_Algorithm_Uri_Size", -1),
+        LESignedIntField("AlgorithmUri_Size", -1),
         ConditionalField(
             StrLenField(
-                "ClientSignature_Algorithm_Uri",
+                "AlgorithmUri",
                 "",
-                length_from=lambda pkt: pkt.ClientSignature_Algorithm_Uri_Size,
+                length_from=lambda pkt: pkt.AlgorithmUri_Size,
             ),
-            lambda pkt: pkt.ClientSignature_Algorithm_Uri_Size != -1,
+            lambda pkt: pkt.AlgorithmUri_Size != -1,
         ),
         # this is a bytestring
         # TODO: this will require some testing
-        LESignedIntField("ClientSignature_Size", -1),
+        LESignedIntField("Signatures_Size", -1),
         ConditionalField(
             FieldListField(
-                "ClientSignature",
+                "Signatures",
                 None,
                 ByteField,
-                count_from=lambda pkt: pkt.ClientSignature_Size,
+                count_from=lambda pkt: pkt.Signatures_Size,
             ),
-            lambda pkt: pkt.ClientSignature_Size != -1,
+            lambda pkt: pkt.Signatures_Size != -1,
         ),
     ]
+
+    def extract_padding(self, s):
+        return "", s
 
 
 class CommonParameter_UserTokenSignature(Packet):
@@ -880,14 +889,14 @@ class CommonParameter_UserTokenSignature(Packet):
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.37#_Ref153782728
     name = "Common Parameter: Struct SignatureData for UserTokenSignature"
     fields_desc = [
-        LESignedIntField("UserTokenSignature_Algorithm_Uri_Size", -1),
+        LESignedIntField("AlgorithmUri_Size", -1),
         ConditionalField(
             StrLenField(
-                "UserTokenSignature_Algorithm_Uri",
+                "AlgorithmUri",
                 "",
-                length_from=lambda pkt: pkt.UserTokenSignature_Algorithm_Uri_Size,
+                length_from=lambda pkt: pkt.AlgorithmUri_Size,
             ),
-            lambda pkt: pkt.UserTokenSignature_Algorithm_Uri_Size != -1,
+            lambda pkt: pkt.AlgorithmUri_Size != -1,
         ),
         # this is a bytestring
         # TODO: this will require some testing
@@ -931,11 +940,53 @@ class CommonParameter_SignedSoftwareCertificate(Packet):
         ),
     ]
 
+    def extract_padding(self, s):
+        return "", s
+
 
 # this is a custom instance of extension object
 # we need to find another way of encoding multiple instances of custom datatypes
-class CommonParameter_UserIdentityToken(BuiltIn_OPCUA_ExtensionObject):
+class CommonParameter_UserIdentityToken(Packet):
     name = "Common Parameter: Struct UserIdentityToken"
+    fields_desc = [
+        XByteField("NodeId_Mask", 0x01),  # default should be 4B encoding
+        ConditionalField(
+            ByteField("Identifier_Numeric_2B", 0),
+            lambda pkt: pkt.NodeId_Mask == 0x00,
+        ),
+        ConditionalField(
+            ByteField("Namespace_Index", 0),
+            lambda pkt: pkt.NodeId_Mask == 0x01,
+        ),
+        ConditionalField(
+            LEShortField("Identifier_Numeric_4B", 0),
+            lambda pkt: pkt.NodeId_Mask == 0x01,
+        ),
+        ByteEnumField(
+            "Encoding",
+            "NO_BODY",  # binary body
+            {0: "NO_BODY", 1: "ByteString", 2: "XmlElement"},
+        ),
+        ConditionalField(
+            LESignedIntField("EncodedData_Body_Size", -1),
+            lambda pkt: pkt.Encoding == 1,
+        ),
+        ConditionalField(
+            LESignedIntField("EncodedBody_Size", -1),
+            lambda pkt: pkt.Encoding == 1,
+        ),
+        ConditionalField(
+            StrLenField(
+                "EncodedBody",
+                "",
+                length_from=lambda pkt: pkt.EncodedBody_Size,
+            ),
+            lambda pkt: (pkt.Encoding == 1) and (pkt.EncodedBody_Size != -1),
+        ),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
 
 
 class CustomParameter_LocaleId(Packet):
@@ -948,7 +999,7 @@ class CustomParameter_LocaleId(Packet):
         LESignedIntField("LocaleId_Size", 2),
         StrLenField(
             "LocaleId",
-            None,
+            "en",
             length_from=lambda pkt: pkt.LocaleId_Size,
         ),
     ]
@@ -1092,8 +1143,11 @@ class CommonParameter_DataValue(Packet):
             #     0x01,
             #     _OPC_UA_Binary_Error_Codes,
             # ),
-            PacketField("code", OPC_UA_Binary_StatusCode() ,OPC_UA_Binary_StatusCode,),
-            
+            PacketField(
+                "code",
+                OPC_UA_Binary_StatusCode(),
+                OPC_UA_Binary_StatusCode,
+            ),
             lambda pkt: pkt.DV_EncodingMask & "statuscode",
         ),
         ConditionalField(
@@ -1101,7 +1155,13 @@ class CommonParameter_DataValue(Packet):
             lambda pkt: pkt.DV_EncodingMask & "SourceTimeStamp",
         ),
         ConditionalField(
-            UTCTimeField("DV_SourcePicoseconds", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7), 
+            UTCTimeField(
+                "DV_SourcePicoseconds",
+                0,
+                fmt="<q",
+                epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0),
+                custom_scaling=1e7,
+            ),
             lambda pkt: pkt.DV_EncodingMask & "SourcePicoseconds",
         ),
         ConditionalField(
@@ -1109,7 +1169,13 @@ class CommonParameter_DataValue(Packet):
             lambda pkt: pkt.DV_EncodingMask & "ServerTimeStamp",
         ),
         ConditionalField(
-            UTCTimeField("DV_ServerPicoseconds", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7),
+            UTCTimeField(
+                "DV_ServerPicoseconds",
+                0,
+                fmt="<q",
+                epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0),
+                custom_scaling=1e7,
+            ),
             lambda pkt: pkt.DV_EncodingMask & "ServerPicoseconds",
         ),
     ]
@@ -1169,7 +1235,13 @@ class CommonParameter_RequestHeader(Packet):
         #     Generic_NodeId(),
         #     Generic_NodeId,
         # ),
-        UTCTimeField("Timestamp", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7), 
+        UTCTimeField(
+            "Timestamp",
+            0,
+            fmt="<q",
+            epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0),
+            custom_scaling=1e7,
+        ),
         LEIntField("RequestHandle", 0),
         XLEIntField("ReturnDiagnostics", 0),  # this should be a flags field?
         LESignedIntField("AuditEntryIdSize", -1),
@@ -1182,7 +1254,12 @@ class CommonParameter_RequestHeader(Packet):
             lambda pkt: pkt.AuditEntryIdSize != -1,
         ),
         LEIntField("TimeoutHint", 0),
-        AdditionalHeader,
+        PacketField(
+            "AdditionalHeader",
+            AdditionalHeader(),
+            AdditionalHeader,
+        ),
+        # AdditionalHeader,
     ]
 
     def extract_padding(self, s):
@@ -1196,9 +1273,19 @@ class CommonParameter_ResponseHeader(Packet):
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.4
     name = "Generic Service Response Header"
     fields_desc = [
-        UTCTimeField("Timestamp", 0,fmt="<q", epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0), custom_scaling=1e7), 
+        UTCTimeField(
+            "Timestamp",
+            0,
+            fmt="<q",
+            epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0),
+            custom_scaling=1e7,
+        ),
         LEIntField("Response_RequestHandle", 0),
-        PacketField("Response_StatusCode", OPC_UA_Binary_StatusCode() ,OPC_UA_Binary_StatusCode,),
+        PacketField(
+            "Response_StatusCode",
+            OPC_UA_Binary_StatusCode(),
+            OPC_UA_Binary_StatusCode,
+        ),
         CommonParameter_DiagnosticInfo,
         FieldLenField(
             "Response_StringTable_ArraySize",
@@ -1265,7 +1352,7 @@ class OPC_UA_Binary_Message_OpenSecureChannelRequest(Packet):
         ),
         LEIntField("ClientProtocolVersion", 0x00),
         LEIntField("SecurityTokenRequestType", 0x00),
-        LEIntField("MessageSecurityMode", 0x00),
+        LEIntField("MessageSecurityMode", 0x01),
         LESignedIntField("ClientNonceSize", -1),
         ConditionalField(
             XStrFixedLenField(
@@ -1289,7 +1376,13 @@ class OPC_UA_Binary_Message_OpenSecureChannelResponse(Packet):
         # channel security token:
         LEIntField("SecureChannelId", 0x00),
         LEIntField("TokenId", 0x00),
-        LESignedLongField("CreatedAt", 0x00),
+        UTCTimeField(
+            "CreatedAt",
+            0,
+            fmt="<q",
+            epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0),
+            custom_scaling=1e7,
+        ),
         LEIntField("RevisedLifetime", 0x00),
         LESignedIntField("ServerNonce_Size", -1),
         ConditionalField(
@@ -1360,7 +1453,7 @@ class OPC_UA_Binary_Message_CreateSessionRequest(Packet):
             ),
             lambda pkt: pkt.ClientCertificate_Size != -1,
         ),
-        XStrFixedLenField("RequestedSessionTimeout", 0, 8),
+        SignedLongField("RequestedSessionTimeout", 0),
         LESignedIntField("MaxResponseMessageSize", 0),
     ]
 
@@ -1534,16 +1627,21 @@ class OPC_UA_Binary_Message_ActivateSessionRequest(Packet):
     fields_desc = [
         # CommonParameter_RequestHeader,
         PacketField(
-            "ActivateSessionRequest_Header",
+            "RequestHeader",
             CommonParameter_RequestHeader(),
             CommonParameter_RequestHeader,
         ),
-        CommonParameter_ClientSignature,
+        PacketField(
+            "ClientSignature",
+            CommonParameter_ClientSignature(),
+            CommonParameter_ClientSignature,
+        ),
+        # CommonParameter_ClientSignature,
         FieldLenField(
             "ClientSoftwareCertificates_ArraySize",
             None,
             fmt="<i",
-            count_of="ClientSoftwareCertificates",
+            count_of="ClientSoftwareCertificates_Array",
         ),
         PacketListField(
             "ClientSoftwareCertificates_Array",
@@ -1564,8 +1662,16 @@ class OPC_UA_Binary_Message_ActivateSessionRequest(Packet):
             count_from=lambda pkt: pkt.LocaleIds_ArraySize,
         ),
         # BuiltIn_OPCUA_ExtensionObject,
-        CommonParameter_UserIdentityToken,
-        CommonParameter_UserTokenSignature,
+        PacketField(
+            "UserIdentityToken",
+            CommonParameter_UserIdentityToken(),
+            CommonParameter_UserIdentityToken,
+        ),
+        PacketField(
+            "UserTokenSignature",
+            CommonParameter_UserTokenSignature(),
+            CommonParameter_UserTokenSignature,
+        ),
     ]
 
 
@@ -1730,6 +1836,66 @@ class OPC_UA_Binary_Message_BrowseRequest(Packet):
         # CommonParameter_RequestHeader,
         # from here we would need to parse the payload for specific nodes and views
         # so no more decoding
+    ]
+
+
+class OPC_UA_Binary_Message_GetEndpointsRequest(Packet):
+    name = "GetEndpointsRequest Service Message"
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.4
+    fields_desc = [
+        PacketField(
+            "GetEndpoints_Header",
+            CommonParameter_RequestHeader(),
+            CommonParameter_RequestHeader,
+        ),
+        LESignedIntField("EndpointUrl_Size", -1),
+        ConditionalField(
+            StrFixedLenField(
+                "EndpointUrl",
+                "",
+                length_from=lambda pkt: pkt.EndpointUrl_Size,
+            ),
+            lambda pkt: pkt.EndpointUrl_Size != -1,
+        ),
+        # CustomParameter_LocaleId
+        FieldLenField("LocaleIds_ArraySize", None, fmt="<I", count_of="LocaleIds"),
+        PacketListField(
+            "LocaleIds",
+            None,
+            CustomParameter_LocaleId,
+            count_from=lambda pkt: pkt.LocaleIds_ArraySize,
+        ),
+        FieldLenField("ProfileUris_ArraySize", None, fmt="<I", count_of="ProfileUris"),
+        PacketListField(
+            "ProfileUris",
+            None,
+            CustomParameter_GenericString,
+            count_from=lambda pkt: pkt.ProfileUris_ArraySize,
+        ),
+    ]
+
+
+class OPC_UA_Binary_Message_GetEndpointsResponse(Packet):
+    name = "GetEndpointsResponse Service Message"
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.4
+    fields_desc = [
+        PacketField(
+            "GetEndpoints_Header",
+            CommonParameter_ResponseHeader(),
+            CommonParameter_ResponseHeader,
+        ),
+        FieldLenField(
+            "ServerEndpoints_ArraySize",
+            None,
+            fmt="<i",
+            count_of="ServerEndpoints_Array",
+        ),
+        PacketListField(
+            "ServerEndpoints_Array",
+            None,
+            CommonParameter_EndpointDescription,
+            count_from=lambda pkt: pkt.ServerEndpoints_ArraySize,
+        ),
     ]
 
 
@@ -1945,32 +2111,32 @@ class OPC_UA_Binary_OpenSecureChannel(Packet):
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.3
     fields_desc = [
         LEIntField("SecureChannelId", 0),
-        LESignedIntField("SecurityPolicyUriSize", -1),
+        LESignedIntField("SecurityPolicyUri_Size", -1),
         ConditionalField(
             StrLenField(
                 "SecurityPolicyUri",
                 "",
-                length_from=lambda pkt: pkt.SecurityPolicyUriSize,
+                length_from=lambda pkt: pkt.SecurityPolicyUri_Size,
             ),  # The actual string data, condition_callable),
-            lambda pkt: pkt.SecurityPolicyUriSize != -1,  # if this is set,
+            lambda pkt: pkt.SecurityPolicyUri_Size != -1,  # if this is set,
         ),
-        LESignedIntField("SenderCertificateSize", -1),
+        LESignedIntField("SenderCertificate_Size", -1),
         ConditionalField(
             StrLenField(
                 "SenderCertificate",
                 "",
-                length_from=lambda pkt: pkt.SenderCertificateSize,
+                length_from=lambda pkt: pkt.SenderCertificate_Size,
             ),  # The actual string data, condition_callable),
-            lambda pkt: pkt.SenderCertificateSize != -1,  # if this is set,
+            lambda pkt: pkt.SenderCertificate_Size != -1,  # if this is set,
         ),
-        LESignedIntField("ReceiverCertificateThumbprintSize", -1),
+        LESignedIntField("ReceiverCertificateThumbprint_Size", -1),
         ConditionalField(
             StrLenField(
                 "ReceiverCertificateThumbprint",
                 "",
-                length_from=lambda pkt: pkt.ReceiverCertificateThumbprintSize,
+                length_from=lambda pkt: pkt.ReceiverCertificateThumbprint_Size,
             ),  # The actual string data, condition_callable),
-            lambda pkt: pkt.ReceiverCertificateThumbprintSize != -1,  # if this is set,
+            lambda pkt: pkt.ReceiverCertificateThumbprint_Size != -1,  # if this is set,
         ),
         LEIntField("SequenceNumber", 0),
         LEIntField("RequestId", 0),
@@ -2035,7 +2201,11 @@ class OPC_UA_Binary_Error(Packet):
     fields_desc = [
         # XLEIntField("Error", 0),
         # OPC_UA_Binary_StatusCode,
-        PacketField("ErrorCode", OPC_UA_Binary_StatusCode() ,OPC_UA_Binary_StatusCode,),
+        PacketField(
+            "ErrorCode",
+            OPC_UA_Binary_StatusCode(),
+            OPC_UA_Binary_StatusCode,
+        ),
         LESignedIntField("ReasonSize", -1),
         ConditionalField(
             StrLenField(
@@ -2178,6 +2348,13 @@ bind_layers(
     NodeId_Identifier_Numeric_4B=527,
 )
 
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_GetEndpointsRequest,
+    NodeId_Identifier_Numeric_4B=428,
+)
+
+
 # Bind the service response layers
 bind_layers(
     OPC_UA_Binary_Message_EncodedNodeId_4B,
@@ -2208,6 +2385,13 @@ bind_layers(
     OPC_UA_Binary_Message_CloseSessionResponse,
     NodeId_Identifier_Numeric_4B=476,
 )
+
+bind_layers(
+    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_Message_GetEndpointsResponse,
+    NodeId_Identifier_Numeric_4B=431,
+)
+
 
 # this one is special, since it can skip the service level!
 # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.35
