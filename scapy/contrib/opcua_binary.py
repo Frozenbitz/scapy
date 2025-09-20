@@ -1913,6 +1913,9 @@ class OPC_UA_Binary_EncodableMessageObject(Packet):
         # this first byte selects how the bytes are represented
         # https://reference.opcfoundation.org/Core/Part6/v105/docs/?r=_Ref105731689
         XByteField("NodeId_EncodingMask", 0x01),
+        ByteField("NodeId_Namespace_Index", 0),
+        # numeric id for the 4-byte representation
+        LEShortField("NodeId_Identifier", 0x00),
     ]
 
 
@@ -2299,106 +2302,106 @@ bind_layers(
 #     NodeId_EncodingMask=0x00,
 # )
 
-bind_layers(
-    OPC_UA_Binary_EncodableMessageObject,
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
-    NodeId_EncodingMask=0x01,
-)
+# bind_layers(
+#     OPC_UA_Binary_EncodableMessageObject,
+#     OPC_UA_Binary_Message_EncodedNodeId_4B,
+#     NodeId_EncodingMask=0x01,
+# )
 
 # Bind the service request layers
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_OpenSecureChannelRequest,
-    NodeId_Identifier_Numeric_4B=446,
+    NodeId_Identifier=446,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_CreateSessionRequest,
-    NodeId_Identifier_Numeric_4B=461,
+    NodeId_Identifier=461,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_ActivateSessionRequest,
-    NodeId_Identifier_Numeric_4B=467,
+    NodeId_Identifier=467,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_ReadRequest,
-    NodeId_Identifier_Numeric_4B=631,
+    NodeId_Identifier=631,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_CloseSessionRequest,
-    NodeId_Identifier_Numeric_4B=473,
+    NodeId_Identifier=473,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_CloseSecureChannelRequest,
-    NodeId_Identifier_Numeric_4B=452,
+    NodeId_Identifier=452,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_BrowseRequest,
-    NodeId_Identifier_Numeric_4B=527,
+    NodeId_Identifier=527,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_GetEndpointsRequest,
-    NodeId_Identifier_Numeric_4B=428,
+    NodeId_Identifier=428,
 )
 
 
 # Bind the service response layers
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_OpenSecureChannelResponse,
-    NodeId_Identifier_Numeric_4B=449,
+    NodeId_Identifier=449,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_CreateSessionResponse,
-    NodeId_Identifier_Numeric_4B=464,
+    NodeId_Identifier=464,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_ActivateSessionResponse,
-    NodeId_Identifier_Numeric_4B=470,
+    NodeId_Identifier=470,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_ReadResponse,
-    NodeId_Identifier_Numeric_4B=634,
+    NodeId_Identifier=634,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_CloseSessionResponse,
-    NodeId_Identifier_Numeric_4B=476,
+    NodeId_Identifier=476,
 )
 
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_GetEndpointsResponse,
-    NodeId_Identifier_Numeric_4B=431,
+    NodeId_Identifier=431,
 )
 
 
 # this one is special, since it can skip the service level!
 # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.35
 bind_layers(
-    OPC_UA_Binary_Message_EncodedNodeId_4B,
+    OPC_UA_Binary_EncodableMessageObject,
     CommonParameter_ServiceFault,
-    NodeId_Identifier_Numeric_4B=397,
+    NodeId_Identifier=397,
 )
 
 # ---------------------------------------------------------------------------- #
