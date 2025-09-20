@@ -1045,7 +1045,7 @@ class CommonParameter_MonitoringParameters(Packet):
     name = "Common Parameter: Struct MonitoringParameters"
     fields_desc = [
         LEIntField("ClientHandle", 0),
-        LESignedLongField("SamplingInterval", 0),
+        SignedLongField("SamplingInterval", 0),
         PacketField(
             "Filter",
             BuiltIn_OPCUA_ExtensionObject(),
@@ -1070,7 +1070,7 @@ class CustomParameter_MonitoredItem_CreateRequest(Packet):
         ),
         LEIntEnumField(
             "MonitoringMode",
-            3,
+            2,
             {
                 0: "DISABLED",
                 1: "SAMPLING",
@@ -1098,7 +1098,7 @@ class CustomParameter_MonitoredItem_CreateResult(Packet):
             OPC_UA_Binary_StatusCode,
         ),
         LEIntField("monitoredItemId", 0),
-        LESignedLongField("SamplingInterval", 0),
+        SignedLongField("SamplingInterval", 0),
         LEIntField("RevisedQueueSize", 0),
         PacketField(
             "Filter",
