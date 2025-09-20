@@ -112,7 +112,7 @@ class Generic_NodeId(Packet):
     ]
 
     def extract_padding(self, s):
-        return "", s
+        return b"", s
 
 
 _diagnosticInfo_flags = {
@@ -124,6 +124,28 @@ _diagnosticInfo_flags = {
     0x20: "InnerStatusCode",
     0x40: "InnerDiagnosticInfo",
     0x80: "unused",
+}
+
+_nodeClassMask_flags = {
+    0x01: "Object",
+    0x02: "Variable",
+    0x04: "Method",
+    0x08: "ObjectType",
+    0x10: "VariableType",
+    0x20: "ReferenceType",
+    0x40: "DataType",
+    0x80: "View",
+}
+
+_browseResultMask_flags = {
+    0x01: "ReferenceType",
+    0x02: "IsForward",
+    0x04: "NodeClass",
+    0x08: "BrowseName",
+    0x10: "DisplayName",
+    0x20: "TypeDefinition",
+    0x40: "unused1",
+    0x80: "unused2",
 }
 
 _dataValue_Encoding_flags = {
@@ -161,11 +183,55 @@ class CustomParameter_GenericString(Packet):
     name = "Custom Parameter: Generic String"
     fields_desc = [
         LESignedIntField("GenericString_Size", -1),
-        StrLenField(
-            "GenericString",
-            None,
-            length_from=lambda pkt: pkt.GenericString_Size,
+        ConditionalField(
+            StrLenField(
+                "GenericString",
+                None,
+                length_from=lambda pkt: pkt.GenericString_Size,
+            ),
+            lambda pkt: pkt.GenericString_Size > 0,
         ),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
+
+class CustomParameter_BrowseDescription(Packet):
+    # a custom type used inside the browse service request
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2
+    name = "Custom Parameter: BrowseDescription"
+    fields_desc = [
+        PacketField(
+            "Browse_NodeId",
+            Generic_NodeId(),
+            Generic_NodeId,
+        ),
+        IntEnumField(
+            "browseDirection",
+            2,
+            {0: "Forward", 1: "Inverse", 2: "Both", 3: "Invalid"},
+        ),
+        PacketField(
+            "Reference_TypeId",
+            Generic_NodeId(),
+            Generic_NodeId,
+        ),
+        ByteField("IncludeSubtypes", 1),
+        FlagsField(
+            "NodeClassMask",
+            0,
+            8,
+            _nodeClassMask_flags,
+        ),
+        LEThreeBytesField("reserved_nodeClass", 0),
+        FlagsField(
+            "ResultMask",
+            0,
+            8,
+            _browseResultMask_flags,
+        ),
+        LEThreeBytesField("reserved_resultMask", 0),
     ]
 
     def extract_padding(self, s):
@@ -1226,6 +1292,98 @@ class CommonParameter_RequestHeader(Packet):
         return "", s
 
 
+class CommonParameter_ViewDescription(Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.45#_Ref141201863
+    name = "Common Parameter: ViewDescription"
+    fields_desc = [
+        PacketField(
+            "viewId",
+            Generic_NodeId(),
+            Generic_NodeId,
+        ),
+        UTCTimeField(
+            "Timestamp",
+            0,
+            fmt="<q",
+            epoch=(1601, 1, 1, 0, 0, 0, 5, 1, 0),
+            custom_scaling=1e7,
+        ),
+        LEIntField("viewVersion", 0),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
+
+class CommonParameter_ReferenceDescription(Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.6#_Ref182132862
+    name = "Common Parameter: Browse Result"
+    fields_desc = [
+        PacketField(
+            "ReferenceTypeId",
+            Generic_NodeId(),
+            Generic_NodeId,
+        ),
+        ByteField("isForward", 0),
+        PacketField(
+            "nodeId",
+            Generic_NodeId(),
+            Generic_NodeId,
+        ),
+        PacketField(
+            "BrowseName",
+            BuiltIn_OPCUA_Binary_QualifiedName(),
+            BuiltIn_OPCUA_Binary_QualifiedName,
+        ),
+        PacketField(
+            "DisplayName",
+            BuiltIn_OPCUA_Binary_LocalizedText(),
+            BuiltIn_OPCUA_Binary_LocalizedText,
+        ),
+        LEIntField("NodeClass", 0),
+        PacketField(
+            "TypeDefinition",
+            Generic_NodeId(),
+            Generic_NodeId,
+        ),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
+
+class CommonParameter_BrowseResult(Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.6#_Ref182132862
+    name = "Common Parameter: Browse Result"
+    fields_desc = [
+        PacketField(
+            "StatusCode",
+            OPC_UA_Binary_StatusCode(),
+            OPC_UA_Binary_StatusCode,
+        ),
+        PacketField(
+            "ContinuationPoint",
+            CustomParameter_GenericString(),
+            CustomParameter_GenericString,
+        ),
+        FieldLenField(
+            "References_ArraySize",
+            None,
+            fmt="<i",
+            count_of="References",
+        ),
+        PacketListField(
+            "References",
+            None,
+            CommonParameter_ReferenceDescription,
+            count_from=lambda pkt: pkt.References_ArraySize,
+        ),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
+
 class CommonParameter_ResponseHeader(Packet):
     # check part 6: https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7
     # there are multiple changes to how the response needs to be parsed
@@ -1715,6 +1873,7 @@ class OPC_UA_Binary_Message_CloseSecureChannelRequest(Packet):
 
 
 class OPC_UA_Binary_Message_BrowseRequest(Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2
     name = "BrowseRequest Service Message"
     #
     fields_desc = [
@@ -1723,9 +1882,63 @@ class OPC_UA_Binary_Message_BrowseRequest(Packet):
             CommonParameter_RequestHeader(),
             CommonParameter_RequestHeader,
         ),
-        # CommonParameter_RequestHeader,
-        # from here we would need to parse the payload for specific nodes and views
-        # so no more decoding
+        PacketField(
+            "View",
+            CommonParameter_ViewDescription(),
+            CommonParameter_ViewDescription,
+        ),
+        LEIntField("RequestedMaxReferencesPerNode", 0),
+        FieldLenField(
+            "NodesToBrowse_ArraySize",
+            None,
+            fmt="<I",
+            count_of="NodesToBrowse",
+        ),
+        PacketListField(
+            "NodesToBrowse",
+            None,
+            CustomParameter_BrowseDescription,
+            count_from=lambda pkt: pkt.NodesToBrowse_ArraySize,
+        ),
+    ]
+
+
+class OPC_UA_Binary_Message_BrowseResponse(Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2
+    name = "BrowseResponsesService Message"
+    fields_desc = [
+        PacketField(
+            "BrowseResponse_Header",
+            CommonParameter_ResponseHeader(),
+            CommonParameter_ResponseHeader,
+        ),
+        FieldLenField(
+            "BrowseResults_ArraySize",
+            None,
+            fmt="<I",
+            count_of="Results",
+        ),
+        PacketListField(
+            "Results",
+            None,
+            CommonParameter_BrowseResult,
+            count_from=lambda pkt: pkt.BrowseResults_ArraySize,
+        ),
+        FieldLenField(
+            "DiagnosticInfo_ArraySize",
+            None,
+            fmt="<I",
+            count_of="DiagnosticInfo",
+        ),
+        ConditionalField(
+            PacketListField(
+                "DiagnosticInfo",
+                None,
+                CommonParameter_DiagnosticInfo,
+                count_from=lambda pkt: pkt.DiagnosticInfo_ArraySize,
+            ),
+            lambda pkt: pkt.DiagnosticInfo_ArraySize != -1,
+        ),
     ]
 
 
@@ -2285,6 +2498,11 @@ bind_layers(
     NodeId_Identifier=431,
 )
 
+bind_layers(
+    OPC_UA_Binary_EncodableMessageObject,
+    OPC_UA_Binary_Message_BrowseResponse,
+    NodeId_Identifier=530,
+)
 
 # this one is special, since it can skip the service level!
 # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.35
