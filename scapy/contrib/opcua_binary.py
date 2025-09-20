@@ -1942,6 +1942,43 @@ class OPC_UA_Binary_Message_BrowseResponse(Packet):
     ]
 
 
+class OPC_UA_Binary_Message_CreateSubscriptionRequest (Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2
+    name = "CreateSubscription Request Service Message"
+    #
+    fields_desc = [
+        PacketField(
+            "CreateSubscriptionRequest_Header",
+            CommonParameter_RequestHeader(),
+            CommonParameter_RequestHeader,
+        ),
+        LESignedLongField("RequestedPublishingInterval", 0),
+        LEIntField("RequestedLifetimeCount", 0),
+        LEIntField("RequestedMaxKeepAliveCount", 0),
+        LEIntField("MaxNotificationsPerPublish", 0),
+        ByteField("PublishingEnabled", 0), # this should be a bool
+        ByteField("Priority", 0),
+    ]
+
+
+
+class OPC_UA_Binary_Message_CreateSubscriptionResponse (Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2
+    name = "CreateSubscription Response Service Message"
+    #
+    fields_desc = [
+        PacketField(
+            "CreateSubscriptionResponse_Header",
+            CommonParameter_ResponseHeader(),
+            CommonParameter_ResponseHeader,
+        ),
+        LEIntField("SubscriptionId", 0),
+        LESignedLongField("RevisedPublishingInterval", 0),
+        LEIntField("RevisedLifetimeCount", 0),
+        LEIntField("RevisedMaxKeepAliveCount", 0), # this should be a bool
+    ]
+
+
 class OPC_UA_Binary_Message_GetEndpointsRequest(Packet):
     name = "GetEndpointsRequest Service Message"
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.4
@@ -2456,6 +2493,12 @@ bind_layers(
 
 bind_layers(
     OPC_UA_Binary_EncodableMessageObject,
+    OPC_UA_Binary_Message_CreateSubscriptionRequest,
+    NodeId_Identifier=787,
+)
+
+bind_layers(
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_GetEndpointsRequest,
     NodeId_Identifier=428,
 )
@@ -2490,6 +2533,12 @@ bind_layers(
     OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_CloseSessionResponse,
     NodeId_Identifier=476,
+)
+
+bind_layers(
+    OPC_UA_Binary_EncodableMessageObject,
+    OPC_UA_Binary_Message_CreateSubscriptionResponse,
+    NodeId_Identifier=790,
 )
 
 bind_layers(
