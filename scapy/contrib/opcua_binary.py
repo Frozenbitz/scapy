@@ -66,51 +66,51 @@ from scapy.contrib.opcua_binary_codes import _OPC_UA_Binary_Error_Codes
 
 
 class Generic_NodeId(Packet):
-    name = "A generic node to showcase the encoding scheme"
+    name = "Encoded NodeId"
     fields_desc = [
-        XByteField("GenericNode_NodeID_Mask", 1),  # default should be 4B encoding
+        XByteField("NodeID_Mask", 1),  # default should be 4B encoding
         ConditionalField(
-            ByteField("GenericNode_Identifier_Numeric_2B", 0),
-            lambda pkt: pkt.GenericNode_NodeID_Mask == 0,
+            ByteField("NodeIdentifier_Numeric_2B", 0),
+            lambda pkt: pkt.NodeID_Mask == 0,
         ),
         ConditionalField(
-            ByteField("GenericNode_Namespace_Index_4B", 0),
-            lambda pkt: (pkt.GenericNode_NodeID_Mask == 1),
+            ByteField("NamespaceIndex_4B", 0),
+            lambda pkt: (pkt.NodeID_Mask == 1),
         ),
         ConditionalField(
-            LEShortField("GenericNode_NodeIdentifier_Numeric_4B", 0),
-            lambda pkt: (pkt.GenericNode_NodeID_Mask == 1),
+            LEShortField("NodeIdentifier_Numeric_4B", 0),
+            lambda pkt: (pkt.NodeID_Mask == 1),
         ),
         ConditionalField(
-            LEShortField("GenericNode_NamespaceIndex_Default", 0),
-            lambda pkt: (pkt.GenericNode_NodeID_Mask == 2)
-            or (pkt.GenericNode_NodeID_Mask == 3)
-            or (pkt.GenericNode_NodeID_Mask == 4)
-            or (pkt.GenericNode_NodeID_Mask == 5),
+            LEShortField("NodespaceIndex_Short", 0),
+            lambda pkt: (pkt.NodeID_Mask == 2)
+            or (pkt.NodeID_Mask == 3)
+            or (pkt.NodeID_Mask == 4)
+            or (pkt.NodeID_Mask == 5),
         ),
         ConditionalField(
-            LEIntField("GenericNode_NamespaceIndex_Numeric", 0),
-            lambda pkt: (pkt.GenericNode_NodeID_Mask == 2),
+            LEIntField("NodeIdentifier_Numeric", 0),
+            lambda pkt: (pkt.NodeID_Mask == 2),
         ),
         ConditionalField(
-            StrFixedLenField("GenericNode_NamespaceIndex_GUID", 0, length=16),
-            lambda pkt: (pkt.GenericNode_NodeID_Mask == 4),
+            StrFixedLenField("NodeIdentifier_GUID", 0, length=16),
+            lambda pkt: (pkt.NodeID_Mask == 4),
         ),
         ConditionalField(
-            LEIntField("GenericNode_NodeIdentifier_String_Size", 0),
-            lambda pkt: (pkt.GenericNode_NodeID_Mask == 3)
-            or (pkt.GenericNode_NodeID_Mask == 5),
+            LEIntField("NodeIdentifier_String_Size", 0),
+            lambda pkt: (pkt.NodeID_Mask == 3)
+            or (pkt.NodeID_Mask == 5),
         ),
         ConditionalField(
             XStrLenField(
-                "GenericNode_NodeIdentifier_String",
+                "NodeIdentifier_String",
                 "",
-                length_from=lambda pkt: pkt.GenericNode_NodeIdentifier_String_Size,
+                length_from=lambda pkt: pkt.NodeIdentifier_String_Size,
             ),
             lambda pkt: (
-                (pkt.GenericNode_NodeID_Mask == 3) or (pkt.GenericNode_NodeID_Mask == 5)
+                (pkt.NodeID_Mask == 3) or (pkt.NodeID_Mask == 5)
             )
-            and (pkt.GenericNode_NodeIdentifier_String_Size != -1),
+            and (pkt.NodeIdentifier_String_Size != -1),
         ),
     ]
 
@@ -351,6 +351,9 @@ class BuiltIn_OPCUA_ExtensionObject(Packet):
             lambda pkt: pkt.Extension_Object_Body_Size != -1,
         ),
     ]
+
+    def extract_padding(self, s):
+        return "", s
 
 
 class CommonParameter_ApplicationDescription(Packet):
@@ -636,7 +639,12 @@ class CommonParameter_EndpointDescription(Packet):
             ),
             lambda pkt: pkt.ED_EndpointUrl_Size != -1,
         ),
-        CommonParameter_ApplicationDescription,
+        PacketField(
+            "ApplicationDescription",
+            CommonParameter_ApplicationDescription(),
+            CommonParameter_ApplicationDescription,
+        ),
+        # CommonParameter_ApplicationDescription,
         # An ApplicationInstanceCertificate is a ByteString containing an encoded Certificate.
         # CommonParameter_ApplicationInstanceCertificate,
         # we need bytestring here instead, not the custom type:
@@ -757,6 +765,9 @@ class CommonParameter_DiagnosticInfo(Packet):
         # ),
     ]
 
+    def extract_padding(self, s):
+        return "", s
+
 
 class CommonParameter_ReadValueId(Packet):
     # a structure to select a specific Node for reading values
@@ -814,10 +825,9 @@ class CommonParameter_ReadValueId(Packet):
             ),
             lambda pkt: pkt.IndexRange_Size != -1,
         ),
-        BuiltIn_OPCUA_Binary_QualifiedName,
+        PacketField("QualifiedName", BuiltIn_OPCUA_Binary_QualifiedName(), BuiltIn_OPCUA_Binary_QualifiedName,),
     ]
 
-    # WTF
     # https://stackoverflow.com/questions/8073508/scapy-adding-new-protocol-with-complex-field-groupings
     def extract_padding(self, s):
         return "", s
@@ -838,7 +848,6 @@ class CommonParameter_SignatureData(Packet):
             lambda pkt: pkt.Algorithm_Uri_Size != -1,
         ),
         # this is a bytestring
-        # TODO: this will require some testing
         LESignedIntField("Signature_Size", -1),
         ConditionalField(
             FieldListField(
@@ -867,7 +876,6 @@ class CommonParameter_ClientSignature(Packet):
             lambda pkt: pkt.AlgorithmUri_Size != -1,
         ),
         # this is a bytestring
-        # TODO: this will require some testing
         LESignedIntField("Signatures_Size", -1),
         ConditionalField(
             FieldListField(
@@ -899,7 +907,6 @@ class CommonParameter_UserTokenSignature(Packet):
             lambda pkt: pkt.AlgorithmUri_Size != -1,
         ),
         # this is a bytestring
-        # TODO: this will require some testing
         LESignedIntField("UserTokenSignature_Size", -1),
         ConditionalField(
             FieldListField(
@@ -1138,11 +1145,6 @@ class CommonParameter_DataValue(Packet):
             lambda pkt: pkt.DV_EncodingMask & "value_present",
         ),
         ConditionalField(
-            #     LEIntEnumField(
-            #     "StatusCode",
-            #     0x01,
-            #     _OPC_UA_Binary_Error_Codes,
-            # ),
             PacketField(
                 "code",
                 OPC_UA_Binary_StatusCode(),
@@ -1188,53 +1190,11 @@ class CommonParameter_RequestHeader(Packet):
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33
     name = "Generic Service Request Header"
     fields_desc = [
-        XByteField("NodeID_Mask", 1),  # default should be 4B encoding
-        ConditionalField(
-            ByteField("Identifier_Numeric_2B", 0),
-            lambda pkt: pkt.NodeID_Mask == 0,
+        PacketField(
+            "RequestHeader_NodeId",
+            Generic_NodeId(),
+            Generic_NodeId,
         ),
-        ConditionalField(
-            ByteField("Namespace_Index_4B", 0),
-            lambda pkt: (pkt.NodeID_Mask == 1),
-        ),
-        ConditionalField(
-            LEShortField("NodeIdentifier_Numeric_4B", 0),
-            lambda pkt: (pkt.NodeID_Mask == 1),
-        ),
-        ConditionalField(
-            LEShortField("NamespaceIndex_Default", 0),
-            lambda pkt: (pkt.NodeID_Mask == 2)
-            or (pkt.NodeID_Mask == 3)
-            or (pkt.NodeID_Mask == 4)
-            or (pkt.NodeID_Mask == 5),
-        ),
-        ConditionalField(
-            LEIntField("NamespaceIndex_Numeric", 0),
-            lambda pkt: (pkt.NodeID_Mask == 2),
-        ),
-        ConditionalField(
-            StrFixedLenField("NamespaceIndex_GUID", 0, length=16),
-            lambda pkt: (pkt.NodeID_Mask == 4),
-        ),
-        ConditionalField(
-            LEIntField("NodeIdentifier_String_Size", 0),
-            lambda pkt: (pkt.NodeID_Mask == 3) or (pkt.NodeID_Mask == 5),
-        ),
-        ConditionalField(
-            StrLenField(
-                "NodeIdentifier_String",
-                "",
-                length_from=lambda pkt: pkt.NodeIdentifier_String_Size,
-            ),
-            lambda pkt: (pkt.NodeID_Mask == 3) or (pkt.NodeID_Mask == 5),
-        ),
-        # TODO: we should be able to package the default nodes into a packet
-        # using a packetfield in this instance doesnt work?
-        # PacketField(
-        #     "RequestHeader_NodeId",
-        #     Generic_NodeId(),
-        #     Generic_NodeId,
-        # ),
         UTCTimeField(
             "Timestamp",
             0,
@@ -1259,7 +1219,6 @@ class CommonParameter_RequestHeader(Packet):
             AdditionalHeader(),
             AdditionalHeader,
         ),
-        # AdditionalHeader,
     ]
 
     def extract_padding(self, s):
@@ -1286,7 +1245,11 @@ class CommonParameter_ResponseHeader(Packet):
             OPC_UA_Binary_StatusCode(),
             OPC_UA_Binary_StatusCode,
         ),
-        CommonParameter_DiagnosticInfo,
+        PacketField(
+            "DiagnosticInfo",
+            CommonParameter_DiagnosticInfo(),
+            CommonParameter_DiagnosticInfo,
+        ),
         FieldLenField(
             "Response_StringTable_ArraySize",
             None,
@@ -1299,7 +1262,11 @@ class CommonParameter_ResponseHeader(Packet):
             CustomParameter_GenericString,
             count_from=lambda pkt: pkt.Response_StringTable_ArraySize,
         ),
-        AdditionalHeader,
+         PacketField(
+            "AdditionalHeader",
+            AdditionalHeader(),
+            AdditionalHeader,
+        ),
     ]
 
     def extract_padding(self, s):
