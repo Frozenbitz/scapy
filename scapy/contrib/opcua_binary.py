@@ -1430,98 +1430,20 @@ class OPC_UA_Binary_Message_CreateSessionResponse(Packet):
     name = "CreateSessionResponse Service Message"
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2
     fields_desc = [
-        CommonParameter_ResponseHeader,
-        # this is the Session ID fully encoded:
-        XByteField(
-            "Response_SessionId_NodeID_Mask", 1
-        ),  # default should be 4B encoding
-        ConditionalField(
-            ByteField("Response_SessionId_Identifier_Numeric_2B", 0),
-            lambda pkt: pkt.Response_SessionId_NodeID_Mask == 0,
+        PacketField(
+            "ResponseHeader",
+            CommonParameter_ResponseHeader(),
+            CommonParameter_ResponseHeader,
         ),
-        ConditionalField(
-            ByteField("Response_SessionId_Namespace_Index_4B", 0),
-            lambda pkt: (pkt.Response_SessionId_NodeID_Mask == 1),
+        PacketField(
+            "Response_SessionId",
+            Generic_NodeId(),
+            Generic_NodeId,
         ),
-        ConditionalField(
-            LEShortField("Response_SessionId_NodeIdentifier_Numeric_4B", 0),
-            lambda pkt: (pkt.Response_SessionId_NodeID_Mask == 1),
-        ),
-        ConditionalField(
-            LEShortField("Response_SessionId_NamespaceIndex_Default", 0),
-            lambda pkt: (pkt.Response_SessionId_NodeID_Mask == 2)
-            or (pkt.Response_SessionId_NodeID_Mask == 3)
-            or (pkt.Response_SessionId_NodeID_Mask == 4)
-            or (pkt.Response_SessionId_NodeID_Mask == 5),
-        ),
-        ConditionalField(
-            LEIntField("Response_SessionId_NamespaceIndex_Numeric", 0),
-            lambda pkt: (pkt.Response_SessionId_NodeID_Mask == 2),
-        ),
-        ConditionalField(
-            XStrFixedLenField("Response_SessionId_NamespaceIndex_GUID", 0, length=16),
-            lambda pkt: (pkt.Response_SessionId_NodeID_Mask == 4),
-        ),
-        ConditionalField(
-            LEIntField("Response_SessionId_NodeIdentifier_String_Size", 0),
-            lambda pkt: (pkt.Response_SessionId_NodeID_Mask == 3)
-            or (pkt.Response_SessionId_NodeID_Mask == 5),
-        ),
-        ConditionalField(
-            StrLenField(
-                "Response_SessionId_NodeIdentifier_String",
-                "",
-                length_from=lambda pkt: pkt.Response_SessionId_NodeIdentifier_String_Size,
-            ),
-            lambda pkt: (pkt.Response_SessionId_NodeID_Mask == 3)
-            or (pkt.Response_SessionId_NodeID_Mask == 5),
-        ),
-        # this is the AuthenticationToken fully encoded:
-        XByteField(
-            "Response_AuthenticationToken_NodeID_Mask", 1
-        ),  # default should be 4B encoding
-        ConditionalField(
-            ByteField("Response_AuthenticationToken_Identifier_Numeric_2B", 0),
-            lambda pkt: pkt.Response_AuthenticationToken_NodeID_Mask == 0,
-        ),
-        ConditionalField(
-            ByteField("Response_AuthenticationToken_Namespace_Index_4B", 0),
-            lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 1),
-        ),
-        ConditionalField(
-            LEShortField("Response_AuthenticationToken_NodeIdentifier_Numeric_4B", 0),
-            lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 1),
-        ),
-        ConditionalField(
-            LEShortField("Response_AuthenticationToken_NamespaceIndex_Default", 0),
-            lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 2)
-            or (pkt.Response_AuthenticationToken_NodeID_Mask == 3)
-            or (pkt.Response_AuthenticationToken_NodeID_Mask == 4)
-            or (pkt.Response_AuthenticationToken_NodeID_Mask == 5),
-        ),
-        ConditionalField(
-            LEIntField("Response_AuthenticationToken_NamespaceIndex_Numeric", 0),
-            lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 2),
-        ),
-        ConditionalField(
-            XStrFixedLenField(
-                "Response_AuthenticationToken_NamespaceIndex_GUID", 0, length=16
-            ),
-            lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 4),
-        ),
-        ConditionalField(
-            LEIntField("Response_AuthenticationToken_NodeIdentifier_String_Size", 0),
-            lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 3)
-            or (pkt.Response_AuthenticationToken_NodeID_Mask == 5),
-        ),
-        ConditionalField(
-            XStrLenField(
-                "Response_AuthenticationToken_NodeIdentifier_String",
-                "",
-                length_from=lambda pkt: pkt.Response_AuthenticationToken_NodeIdentifier_String_Size,
-            ),
-            lambda pkt: (pkt.Response_AuthenticationToken_NodeID_Mask == 3)
-            or (pkt.Response_AuthenticationToken_NodeID_Mask == 5),
+        PacketField(
+            "ResponseAuthenticationToken",
+            Generic_NodeId(),
+            Generic_NodeId,
         ),
         XStrFixedLenField("RevisedSessionTimeout", 0, 8),
         LESignedIntField("ServerNonce_Size", -1),
