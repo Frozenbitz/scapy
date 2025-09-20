@@ -98,8 +98,7 @@ class Generic_NodeId(Packet):
         ),
         ConditionalField(
             LEIntField("NodeIdentifier_String_Size", 0),
-            lambda pkt: (pkt.NodeID_Mask == 3)
-            or (pkt.NodeID_Mask == 5),
+            lambda pkt: (pkt.NodeID_Mask == 3) or (pkt.NodeID_Mask == 5),
         ),
         ConditionalField(
             XStrLenField(
@@ -107,9 +106,7 @@ class Generic_NodeId(Packet):
                 "",
                 length_from=lambda pkt: pkt.NodeIdentifier_String_Size,
             ),
-            lambda pkt: (
-                (pkt.NodeID_Mask == 3) or (pkt.NodeID_Mask == 5)
-            )
+            lambda pkt: ((pkt.NodeID_Mask == 3) or (pkt.NodeID_Mask == 5))
             and (pkt.NodeIdentifier_String_Size != -1),
         ),
     ]
@@ -825,7 +822,11 @@ class CommonParameter_ReadValueId(Packet):
             ),
             lambda pkt: pkt.IndexRange_Size != -1,
         ),
-        PacketField("QualifiedName", BuiltIn_OPCUA_Binary_QualifiedName(), BuiltIn_OPCUA_Binary_QualifiedName,),
+        PacketField(
+            "QualifiedName",
+            BuiltIn_OPCUA_Binary_QualifiedName(),
+            BuiltIn_OPCUA_Binary_QualifiedName,
+        ),
     ]
 
     # https://stackoverflow.com/questions/8073508/scapy-adding-new-protocol-with-complex-field-groupings
@@ -1262,7 +1263,7 @@ class CommonParameter_ResponseHeader(Packet):
             CustomParameter_GenericString,
             count_from=lambda pkt: pkt.Response_StringTable_ArraySize,
         ),
-         PacketField(
+        PacketField(
             "AdditionalHeader",
             AdditionalHeader(),
             AdditionalHeader,
