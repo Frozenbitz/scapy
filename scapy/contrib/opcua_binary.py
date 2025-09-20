@@ -391,7 +391,7 @@ class BuiltIn_OPCUA_ExtensionObject(Packet):
         ),
         ByteEnumField(
             "Encoding",
-            1,  # binary body
+            0,  # binary body
             {0: "NO_BODY", 1: "ByteString", 2: "XmlElement"},
         ),
         ConditionalField(
@@ -831,48 +831,13 @@ class CommonParameter_ReadValueId(Packet):
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/7.29#_Ref133162567
     name = "Common Parameter: Struct ReadValueId"
     fields_desc = [
-        XByteField("RVID_NodeID_Mask", 1),  # default should be 4B encoding
-        ConditionalField(
-            ByteField("RVID_Identifier_Numeric_2B", 0),
-            lambda pkt: pkt.RVID_NodeID_Mask == 0,
+        PacketField(
+            "RVID_Node",
+            Generic_NodeId(),
+            Generic_NodeId,
         ),
-        ConditionalField(
-            ByteField("RVID_Namespace_Index_4B", 0),
-            lambda pkt: (pkt.RVID_NodeID_Mask == 1),
-        ),
-        ConditionalField(
-            LEShortField("RVID_NodeIdentifier_Numeric_4B", 0),
-            lambda pkt: (pkt.RVID_NodeID_Mask == 1),
-        ),
-        ConditionalField(
-            LEShortField("RVID_NamespaceIndex_Default", 0),
-            lambda pkt: (pkt.RVID_NodeID_Mask == 2)
-            or (pkt.RVID_NodeID_Mask == 3)
-            or (pkt.RVID_NodeID_Mask == 4)
-            or (pkt.RVID_NodeID_Mask == 5),
-        ),
-        ConditionalField(
-            LEIntField("RVID_NamespaceIndex_Numeric", 0),
-            lambda pkt: (pkt.RVID_NodeID_Mask == 2),
-        ),
-        ConditionalField(
-            StrFixedLenField("RVID_NamespaceIndex_GUID", 0, length=16),
-            lambda pkt: (pkt.RVID_NodeID_Mask == 4),
-        ),
-        ConditionalField(
-            LEIntField("RVID_NodeIdentifier_String_Size", 0),
-            lambda pkt: (pkt.RVID_NodeID_Mask == 3) or (pkt.RVID_NodeID_Mask == 5),
-        ),
-        ConditionalField(
-            StrLenField(
-                "RVID_NodeIdentifier_String",
-                "",
-                length_from=lambda pkt: pkt.RVID_NodeIdentifier_String_Size,
-            ),
-            lambda pkt: ((pkt.RVID_NodeID_Mask == 3) or (pkt.RVID_NodeID_Mask == 5))
-            and (pkt.RVID_NodeIdentifier_String_Size != -1),
-        ),
-        LEIntField("AttributeId", 0),
+        # TODO: import flags
+        LEIntField("AttributeId", 0),  # these seem to be some flags
         LESignedIntField("IndexRange_Size", -1),
         ConditionalField(
             StrLenField(
