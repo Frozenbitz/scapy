@@ -384,34 +384,28 @@ class BuiltIn_OPCUA_ExtensionObject(Packet):
     # https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.15
     name = "Builtin: Extension Object"
     fields_desc = [
-        XByteField(
-            "Extension_Object_NodeId_Mask", 0x01
-        ),  # default should be 4B encoding
-        ConditionalField(
-            ByteField("Extension_Object_Identifier_Numeric_2B", 0),
-            lambda pkt: pkt.Extension_Object_NodeId_Mask == 0x00,
-        ),
-        ConditionalField(
-            ByteField("Extension_Object_Namespace_Index", 0),
-            lambda pkt: pkt.Extension_Object_NodeId_Mask == 0x01,
-        ),
-        ConditionalField(
-            LEShortField("Extension_Object_Identifier_Numeric_4B", 0),
-            lambda pkt: pkt.Extension_Object_NodeId_Mask == 0x01,
+        PacketField(
+            "Extension_NodeId",
+            Generic_NodeId(),
+            Generic_NodeId,
         ),
         ByteEnumField(
             "Encoding",
             1,  # binary body
             {0: "NO_BODY", 1: "ByteString", 2: "XmlElement"},
         ),
-        LESignedIntField("Extension_Object_Body_Size", -1),
+        ConditionalField(
+            LESignedIntField("Extension_Object_Body_Size", -1),
+            lambda pkt: pkt.Encoding == "ByteString",
+        ),
         ConditionalField(
             StrLenField(
                 "Extension_Object_Body",
                 "",
                 length_from=lambda pkt: pkt.Extension_Object_Body_Size,
             ),
-            lambda pkt: pkt.Extension_Object_Body_Size != -1,
+            lambda pkt: (pkt.Encoding == "ByteString")
+            and (pkt.Extension_Object_Body_Size != -1),
         ),
     ]
 
@@ -1075,6 +1069,76 @@ class CustomParameter_LocaleId(Packet):
             "LocaleId",
             "en",
             length_from=lambda pkt: pkt.LocaleId_Size,
+        ),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
+
+class CommonParameter_MonitoringParameters(Packet):
+    name = "Common Parameter: Struct MonitoringParameters"
+    fields_desc = [
+        LEIntField("ClientHandle", 0),
+        LESignedLongField("SamplingInterval", 0),
+        PacketField(
+            "Filter",
+            BuiltIn_OPCUA_ExtensionObject(),
+            BuiltIn_OPCUA_ExtensionObject,
+        ),
+        LEIntField("QueueSize", 0),
+        ByteField("DiscardOldest", 0),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
+
+class CustomParameter_MonitoredItem_CreateRequest(Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+    name = "Custom Parameter: MonitoredItem CreateRequest"
+    fields_desc = [
+        PacketField(
+            "ItemToMonitor",
+            CommonParameter_ReadValueId(),
+            CommonParameter_ReadValueId,
+        ),
+        LEIntEnumField(
+            "MonitoringMode",
+            3,
+            {
+                0: "DISABLED",
+                1: "SAMPLING",
+                2: "REPORTING",
+            },
+        ),
+        PacketField(
+            "RequestedParameters",
+            CommonParameter_MonitoringParameters(),
+            CommonParameter_MonitoringParameters,
+        ),
+    ]
+
+    def extract_padding(self, s):
+        return "", s
+
+
+class CustomParameter_MonitoredItem_CreateResult(Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+    name = "Custom Parameter: MonitoredItem CreateResult"
+    fields_desc = [
+        PacketField(
+            "StatusCode",
+            OPC_UA_Binary_StatusCode(),
+            OPC_UA_Binary_StatusCode,
+        ),
+        LEIntField("monitoredItemId", 0),
+        LESignedLongField("SamplingInterval", 0),
+        LEIntField("RevisedQueueSize", 0),
+        PacketField(
+            "Filter",
+            BuiltIn_OPCUA_ExtensionObject(),
+            BuiltIn_OPCUA_ExtensionObject,
         ),
     ]
 
@@ -1942,7 +2006,7 @@ class OPC_UA_Binary_Message_BrowseResponse(Packet):
     ]
 
 
-class OPC_UA_Binary_Message_CreateSubscriptionRequest (Packet):
+class OPC_UA_Binary_Message_CreateSubscriptionRequest(Packet):
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2
     name = "CreateSubscription Request Service Message"
     #
@@ -1956,13 +2020,12 @@ class OPC_UA_Binary_Message_CreateSubscriptionRequest (Packet):
         LEIntField("RequestedLifetimeCount", 0),
         LEIntField("RequestedMaxKeepAliveCount", 0),
         LEIntField("MaxNotificationsPerPublish", 0),
-        ByteField("PublishingEnabled", 0), # this should be a bool
+        ByteField("PublishingEnabled", 0),  # this should be a bool
         ByteField("Priority", 0),
     ]
 
 
-
-class OPC_UA_Binary_Message_CreateSubscriptionResponse (Packet):
+class OPC_UA_Binary_Message_CreateSubscriptionResponse(Packet):
     # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2
     name = "CreateSubscription Response Service Message"
     #
@@ -1975,7 +2038,84 @@ class OPC_UA_Binary_Message_CreateSubscriptionResponse (Packet):
         LEIntField("SubscriptionId", 0),
         LESignedLongField("RevisedPublishingInterval", 0),
         LEIntField("RevisedLifetimeCount", 0),
-        LEIntField("RevisedMaxKeepAliveCount", 0), # this should be a bool
+        LEIntField("RevisedMaxKeepAliveCount", 0),  # this should be a bool
+    ]
+
+
+class OPC_UA_Binary_Message_CreateMonitoredItemsRequest(Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+    name = "CreateMonitoredItems Request Service Message"
+    #
+    fields_desc = [
+        PacketField(
+            "CreateMonitoredItemsRequest_Header",
+            CommonParameter_RequestHeader(),
+            CommonParameter_RequestHeader,
+        ),
+        LEIntField("SubscriptionId", 0),
+        LEIntEnumField(
+            "TimestampsToReturn",
+            3,
+            {0: "SOURCE", 1: "SERVER", 2: "BOTH", 3: "NEITHER", 4: "INVALID"},
+        ),
+        FieldLenField(
+            "ItemsToCreate_ArraySize",
+            None,
+            fmt="<I",
+            count_of="ItemsToCreate",
+        ),
+        ConditionalField(
+            PacketListField(
+                "ItemsToCreate",
+                None,
+                CustomParameter_MonitoredItem_CreateRequest,
+                count_from=lambda pkt: pkt.ItemsToCreate_ArraySize,
+            ),
+            lambda pkt: pkt.ItemsToCreate_ArraySize != -1,
+        ),
+    ]
+
+
+class OPC_UA_Binary_Message_CreateMonitoredItemsResponse(Packet):
+    # https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+    name = "CreateMonitoredItems Response Service Message"
+    #
+    fields_desc = [
+        PacketField(
+            "CreateMonitoredItemsResponse_Header",
+            CommonParameter_ResponseHeader(),
+            CommonParameter_ResponseHeader,
+        ),
+        FieldLenField(
+            "Results_ArraySize",
+            None,
+            fmt="<I",
+            count_of="Results",
+        ),
+        ConditionalField(
+            PacketListField(
+                "Results",
+                None,
+                CustomParameter_MonitoredItem_CreateResult,
+                count_from=lambda pkt: pkt.Results_ArraySize,
+            ),
+            lambda pkt: pkt.Results_ArraySize != -1,
+        ),
+        FieldLenField(
+            "DiagnosticInfos_ArraySize",
+            None,
+            fmt="<I",
+            count_of="DiagnosticInfos",
+        ),
+        ConditionalField(
+            PacketListField(
+                "DiagnosticInfos",
+                None,
+                CommonParameter_DiagnosticInfo,
+                count_from=lambda pkt: pkt.DiagnosticInfos_ArraySize,
+            ),
+            lambda pkt: pkt.DiagnosticInfos_ArraySize != -1,
+        ),
     ]
 
 
@@ -2499,6 +2639,12 @@ bind_layers(
 
 bind_layers(
     OPC_UA_Binary_EncodableMessageObject,
+    OPC_UA_Binary_Message_CreateMonitoredItemsRequest,
+    NodeId_Identifier=751,
+)
+
+bind_layers(
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_GetEndpointsRequest,
     NodeId_Identifier=428,
 )
@@ -2543,6 +2689,12 @@ bind_layers(
 
 bind_layers(
     OPC_UA_Binary_EncodableMessageObject,
+    OPC_UA_Binary_Message_CreateMonitoredItemsResponse,
+    NodeId_Identifier=754,
+)
+
+bind_layers(
+    OPC_UA_Binary_EncodableMessageObject,
     OPC_UA_Binary_Message_GetEndpointsResponse,
     NodeId_Identifier=431,
 )
@@ -2560,51 +2712,3 @@ bind_layers(
     CommonParameter_ServiceFault,
     NodeId_Identifier=397,
 )
-
-# ---------------------------------------------------------------------------- #
-
-
-# parse some custom types:
-# this would be a OPC String, if we use default conditionals
-# fields_desc = [
-#     LEIntField("StringLength", -1),  # 4-byte signed integer for length
-#     ConditionalField(
-#         StrLenField(
-#             "data",
-#             "",
-#             length_from=lambda pkt: pkt.StringLength,
-#         ),  # The actual string data, condition_callable),
-#     ),
-#     lambda pkt: pkt.StringLength != -1,  # if this is set,
-# ]
-
-# ------------------------ useless types ------------------------------------- #
-
-# useless type: we cannot change the name in there dynamically
-# class OpcUaString(Packet):
-#     """
-#     A Scapy Field for OPC UA Strings.
-#     Encodes/decodes as a 4-byte little-endian length prefix
-#     followed by UTF-8 encoded string data.
-#     Handles NULL (-1) and empty (0) string lengths.
-#     """
-
-#     name = "OpcUaString"
-#     fields_desc = [
-#         LEIntField("StrSize", -1),  # 4-byte signed integer for length
-#         ConditionalField(
-#             StrLenField(
-#                 self.localname, # this does not work
-#                 "",
-#                 length_from=lambda pkt: pkt.StrSize,
-#             ),  # The actual string data, condition_callable),
-#             lambda pkt: pkt.StrSize != -1,  # if this is set,
-#         ),
-#     ]
-
-#     def __init__(self, name: str):
-#         """
-#         Adds a human readable name to the string for parsing
-#         """
-#         super().__init__()
-#         self.localname = name
